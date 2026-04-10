@@ -1,0 +1,204 @@
+/* =========================================================
+   LNKR Design System — Warm Press · Editorial Theme
+   ========================================================= */
+
+:root {
+  /* Paper palette */
+  --paper:      #f5f0e8;
+  --paper-warm: #ede6d6;
+  --white:      #ffffff;
+  --ink:        #1c160d;
+  --ink-light:  #6b5a4e;
+  --ink-faint:  #b5a898;
+
+  /* Accent — vermillion / cinnabar */
+  --vermillion:       #e05535;
+  --vermillion-light: #f0795a;
+  --vermillion-bg:    rgba(224, 85, 53, 0.08);
+
+  /* Semantic */
+  --green:   #2d8a5e;
+  --green-bg: rgba(45, 138, 94, 0.08);
+  --amber:   #b87a16;
+  --amber-bg: rgba(184, 122, 22, 0.1);
+  --red:     #c0392b;
+  --red-bg:  rgba(192, 57, 43, 0.08);
+
+  /* Borders — ink rules */
+  --rule-heavy:  2px solid var(--ink);
+  --rule-medium: 1px solid var(--ink);
+  --rule-light:  1px solid var(--ink-faint);
+  --rule-faint:  1px solid rgba(28, 22, 13, 0.1);
+
+  /* Fonts */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  /* Spacing */
+  --r-none: 0px;
+  --r-sm:   3px;
+  --r-md:   6px;
+
+  /* Transition */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --t:    all 0.18s var(--ease);
+}
+
+/* ─── Reset ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: var(--font-body);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+
+a { color: var(--vermillion); text-decoration: none; }
+button { font-family: var(--font-body); }
+
+/* ─── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--paper-warm); }
+::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-light); }
+
+/* ─── Selection ──────────────────────────────────────── */
+::selection { background: rgba(224, 85, 53, 0.2); color: var(--ink); }
+
+/* ─── Card ───────────────────────────────────────────── */
+.lk-card {
+  background: var(--white);
+  border: var(--rule-heavy);
+  padding: 24px;
+}
+
+/* ─── Button ─────────────────────────────────────────── */
+.lk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 10px 20px;
+  border: var(--rule-medium);
+  cursor: pointer;
+  transition: var(--t);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  border-radius: var(--r-none);
+}
+.lk-btn-primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.lk-btn-primary:hover { background: var(--vermillion); border-color: var(--vermillion); }
+.lk-btn-ghost {
+  background: transparent;
+  color: var(--ink-light);
+  border-color: var(--ink-faint);
+}
+.lk-btn-ghost:hover { color: var(--ink); border-color: var(--ink); background: var(--paper-warm); }
+.lk-btn-accent {
+  background: var(--vermillion);
+  color: var(--white);
+  border-color: var(--vermillion);
+}
+.lk-btn-accent:hover { background: var(--vermillion-light); border-color: var(--vermillion-light); }
+.lk-btn-block { width: 100%; }
+.lk-btn-lg { padding: 14px 28px; font-size: 15px; }
+.lk-btn-sm { padding: 6px 14px; font-size: 12.5px; }
+
+/* ─── Input ──────────────────────────────────────────── */
+.lk-input {
+  width: 100%;
+  background: var(--white);
+  border: var(--rule-medium);
+  border-radius: var(--r-none);
+  padding: 11px 14px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+  transition: var(--t);
+}
+.lk-input::placeholder { color: var(--ink-faint); }
+.lk-input:hover { border-color: var(--ink); }
+.lk-input:focus { border-color: var(--vermillion); box-shadow: 3px 3px 0 rgba(224, 85, 53, 0.12); }
+
+/* ─── Label ──────────────────────────────────────────── */
+.lk-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-light);
+  margin-bottom: 7px;
+}
+
+/* ─── Badge ──────────────────────────────────────────── */
+.lk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+.badge-red     { background: var(--red-bg);    color: var(--red);        border-color: rgba(192,57,43,0.2);  }
+.badge-green   { background: var(--green-bg);  color: var(--green);      border-color: rgba(45,138,94,0.2);  }
+.badge-amber   { background: var(--amber-bg);  color: var(--amber);      border-color: rgba(184,122,22,0.2); }
+.badge-vermillion { background: var(--vermillion-bg); color: var(--vermillion); border-color: rgba(224,85,53,0.2); }
+.badge-ink     { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* ─── Section heading ────────────────────────────────── */
+.section-label {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-light);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ink-faint);
+}
+
+/* ─── Page transition ────────────────────────────────── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s var(--ease); }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ─── NaiveUI overrides (light mode) ─────────────────── */
+.n-form-item-label {
+  font-family: var(--font-body) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+.n-data-table .n-data-table-th {
+  font-family: var(--font-body) !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+}
+.n-data-table .n-data-table-td { font-size: 13.5px !important; }
+.n-pagination-item { font-family: var(--font-mono) !important; font-size: 12px !important; }
+.n-message { font-family: var(--font-body) !important; }
+.n-message-icon { margin-right: 8px !important; }

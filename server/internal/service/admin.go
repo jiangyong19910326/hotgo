@@ -251,6 +251,8 @@ type (
 		AccountLogin(ctx context.Context, in *adminin.AccountLoginInp) (res *adminin.LoginModel, err error)
 		// MobileLogin 手机号登录
 		MobileLogin(ctx context.Context, in *adminin.MobileLoginInp) (res *adminin.LoginModel, err error)
+		// WechatLogin 微信登录（通过 memberId 生成 token）
+		WechatLogin(ctx context.Context, memberId int64) (res *adminin.LoginModel, err error)
 		// BindUserContext 绑定用户上下文
 		BindUserContext(ctx context.Context, claims *model.Identity) (err error)
 	}

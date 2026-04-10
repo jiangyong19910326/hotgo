@@ -219,6 +219,32 @@ func (s *sAdminSite) MobileLogin(ctx context.Context, in *adminin.MobileLoginInp
 	return
 }
 
+// WechatLogin 微信登录（通过 memberId 生成 token）
+func (s *sAdminSite) WechatLogin(ctx context.Context, memberId int64) (res *adminin.LoginModel, err error) {
+	defer func() {
+		service.SysLoginLog().Push(ctx, &sysin.LoginLogPushInp{Response: res, Err: err})
+	}()
+
+	var mb *entity.AdminMember
+	if err = dao.AdminMember.Ctx(ctx).WherePri(memberId).Scan(&mb); err != nil {
+		err = gerror.Wrap(err, consts.ErrorORM)
+		return
+	}
+
+	if mb == nil {
+		err = gerror.New("账号不存在")
+		return
+	}
+
+	if mb.Status != consts.StatusEnabled {
+		err = gerror.New("账号已被禁用")
+		return
+	}
+
+	res, err = s.handleLogin(ctx, mb)
+	return
+}
+
 // handleLogin .
 func (s *sAdminSite) handleLogin(ctx context.Context, mb *entity.AdminMember) (res *adminin.LoginModel, err error) {
 	role, dept, err := s.getLoginRoleAndDept(ctx, mb.RoleId, mb.DeptId)

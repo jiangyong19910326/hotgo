@@ -12,4 +12,5 @@ const (
 	AppHome      = "home"
 	AppWebSocket = "websocket"
 	AppDefault   = "default"
+	AppOpen      = "open" // 开放接口（签名验签）
 )

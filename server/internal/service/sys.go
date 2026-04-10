@@ -7,6 +7,7 @@ package service
 
 import (
 	"context"
+	apishortlink "hotgo/api/api/shortlink"
 	"hotgo/internal/library/hgorm/handler"
 	"hotgo/internal/model"
 	"hotgo/internal/model/entity"
@@ -367,6 +368,30 @@ type (
 		// RealWrite 真实写入
 		RealWrite(ctx context.Context, models entity.SysServeLog) (err error)
 	}
+	ISysShortLink interface {
+		// Model 短链接ORM模型
+		Model(ctx context.Context, option ...*handler.Option) *gdb.Model
+		// List 获取短链接列表
+		List(ctx context.Context, in *sysin.ShortLinkListInp) (list []*sysin.ShortLinkListModel, totalCount int, err error)
+		// Export 导出短链接
+		Export(ctx context.Context, in *sysin.ShortLinkListInp) (err error)
+		// Create 前台创建短链接（自动生成短码）
+		Create(ctx context.Context, in *apishortlink.CreateReq) (res *apishortlink.CreateRes, err error)
+		// Redirect 前台获取原始链接并异步累加点击量
+		Redirect(ctx context.Context, code string) (res *apishortlink.RedirectRes, err error)
+		// Stats 前台获取短链接统计信息
+		Stats(ctx context.Context, code string) (res *apishortlink.StatsRes, err error)
+		// ListPub 前台分页查询短链接列表
+		ListPub(ctx context.Context, in *apishortlink.ListReq) (res *apishortlink.ListRes, err error)
+		// Edit 修改/新增短链接
+		Edit(ctx context.Context, in *sysin.ShortLinkEditInp) (err error)
+		// Delete 删除短链接
+		Delete(ctx context.Context, in *sysin.ShortLinkDeleteInp) (err error)
+		// View 获取短链接指定信息
+		View(ctx context.Context, in *sysin.ShortLinkViewInp) (res *sysin.ShortLinkViewModel, err error)
+		// Status 更新短链接状态
+		Status(ctx context.Context, in *sysin.ShortLinkStatusInp) (err error)
+	}
 	ISysSmsLog interface {
 		// Delete 删除
 		Delete(ctx context.Context, in *sysin.SmsLogDeleteInp) (err error)
@@ -425,6 +450,7 @@ var (
 	localSysProvinces      ISysProvinces
 	localSysServeLicense   ISysServeLicense
 	localSysServeLog       ISysServeLog
+	localSysShortLink      ISysShortLink
 	localSysSmsLog         ISysSmsLog
 	localSysTestCategory   ISysTestCategory
 )
@@ -636,6 +662,17 @@ func SysServeLog() ISysServeLog {
 
 func RegisterSysServeLog(i ISysServeLog) {
 	localSysServeLog = i
+}
+
+func SysShortLink() ISysShortLink {
+	if localSysShortLink == nil {
+		panic("implement not found for interface ISysShortLink, forgot register?")
+	}
+	return localSysShortLink
+}
+
+func RegisterSysShortLink(i ISysShortLink) {
+	localSysShortLink = i
 }
 
 func SysSmsLog() ISysSmsLog {

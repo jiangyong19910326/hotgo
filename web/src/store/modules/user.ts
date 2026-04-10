@@ -18,6 +18,7 @@ import {
   logout,
   mobileLogin,
 } from '@/api/system/user';
+import { ApiEnum } from '@/enums/apiEnum';
 import { isWechatBrowser } from '@/utils/is';
 import { DeptTypeEnum } from '@/enums/deptEnum';
 const Storage = createStorage({ storage: localStorage });
@@ -165,6 +166,24 @@ export const useUserStore = defineStore({
     // 手机号登录
     async mobileLogin(userInfo) {
       return await this.handleLogin(mobileLogin(userInfo));
+    },
+    // 微信登录：将浏览器导航到微信授权页，授权后回调携带 token
+    wechatLogin(syncRedirect: string) {
+      const prefix = '/admin';
+      const url =
+        prefix +
+        ApiEnum.WechatLoginAuthorize +
+        '?syncRedirect=' +
+        encodeURIComponent(syncRedirect);
+      window.location.href = url;
+    },
+    // 通过 token 直接完成登录（用于微信回调后）
+    loginByToken(token: string, expires: number) {
+      const ex = 30 * 24 * 60 * 60 * 1000;
+      storage.set(ACCESS_TOKEN, token, ex);
+      storage.set(CURRENT_USER, { token, expires }, ex);
+      storage.set(IS_LOCKSCREEN, false);
+      this.setToken(token);
     },
     async handleLogin(request: Promise<any>) {
       try {

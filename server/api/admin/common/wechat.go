@@ -29,3 +29,13 @@ type WechatAuthorizeCallReq struct {
 type WechatAuthorizeCallRes struct {
 	*commonin.WechatAuthorizeCallModel
 }
+
+// WechatLoginAuthorizeReq 微信登录授权（无需已登录）
+type WechatLoginAuthorizeReq struct {
+	g.Meta `path:"/wechat/loginAuthorize" method:"get" tags:"微信" summary:"微信登录授权"`
+	commonin.WechatLoginAuthorizeInp
+}
+
+type WechatLoginAuthorizeRes struct {
+	*commonin.WechatLoginAuthorizeModel
+}

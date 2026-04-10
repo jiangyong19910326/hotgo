@@ -9,6 +9,7 @@ package consts
 const (
 	WechatAuthorizeOpenId    = "openId"    // 设置openid
 	WechatAuthorizeBindLogin = "bindLogin" // 绑定微信登录
+	WechatAuthorizeLogin     = "login"     // 微信登录（无需已登录）
 )
 
 // 应用授权作用域

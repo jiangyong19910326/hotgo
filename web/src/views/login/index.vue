@@ -29,10 +29,12 @@
 <script lang="ts" setup>
   import LoginFrom from './login/index.vue';
   import RegisterFrom from './register/index.vue';
-  import { useRouter } from 'vue-router';
+  import { useRouter, useRoute } from 'vue-router';
   import { useUserStore } from '@/store/modules/user';
+  import { PageEnum } from '@/enums/pageEnum';
 
   const userStore = useUserStore();
+  const route = useRoute();
   const projectName = computed(() => userStore.loginConfig?.projectName);
 
   interface LoginModule {
@@ -75,7 +77,16 @@
     }
   }
 
-  onMounted(() => {
+  onMounted(async () => {
+    // 处理微信登录回调：URL 携带 wechat_token 时直接完成登录
+    const wechatToken = route.query.wechat_token as string;
+    const wechatExpires = Number(route.query.wechat_expires ?? 0);
+    if (wechatToken) {
+      userStore.loginByToken(wechatToken, wechatExpires);
+      router.replace(PageEnum.BASE_HOME);
+      return;
+    }
+
     //是否开放注册
     if (userStore.loginConfig?.loginRegisterSwitch === 1) {
       const findItem = modules.find((item) => item.key === 'register');

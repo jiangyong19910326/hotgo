@@ -10,6 +10,9 @@ export enum ApiEnum {
   SiteLogout = '/site/logout', // 注销
   SiteConfig = '/site/config', // 配置信息
 
+  // 微信
+  WechatLoginAuthorize = '/wechat/loginAuthorize', // 微信登录授权
+
   // 用户
   MemberInfo = '/member/info', // 登录用户信息
 

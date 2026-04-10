@@ -26,3 +26,8 @@ func (c *cWechat) AuthorizeCall(ctx context.Context, req *common.WechatAuthorize
 	_, err = service.CommonWechat().AuthorizeCall(ctx, &req.WechatAuthorizeCallInp)
 	return
 }
+
+func (c *cWechat) LoginAuthorize(ctx context.Context, req *common.WechatLoginAuthorizeReq) (res *common.WechatLoginAuthorizeRes, err error) {
+	_, err = service.CommonWechat().LoginAuthorize(ctx, &req.WechatLoginAuthorizeInp)
+	return
+}

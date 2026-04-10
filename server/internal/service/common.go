@@ -28,6 +28,8 @@ type (
 		// Authorize 微信用户授权
 		Authorize(ctx context.Context, in *commonin.WechatAuthorizeInp) (res *commonin.WechatAuthorizeModel, err error)
 		AuthorizeCall(ctx context.Context, in *commonin.WechatAuthorizeCallInp) (res *commonin.WechatAuthorizeCallModel, err error)
+		// LoginAuthorize 微信登录授权（无需已登录）
+		LoginAuthorize(ctx context.Context, in *commonin.WechatLoginAuthorizeInp) (res *commonin.WechatLoginAuthorizeModel, err error)
 		// GetOpenId 从缓存中获取临时openid
 		GetOpenId(ctx context.Context) (openId string, err error)
 		GetCacheKey(typ string, ak string) string

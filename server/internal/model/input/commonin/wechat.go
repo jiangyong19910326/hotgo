@@ -20,3 +20,10 @@ type WechatAuthorizeCallInp struct {
 }
 
 type WechatAuthorizeCallModel struct{}
+
+// WechatLoginAuthorizeInp 微信登录授权（无需已登录）
+type WechatLoginAuthorizeInp struct {
+	SyncRedirect string `json:"syncRedirect" v:"required#同步跳转地址不能为空" dc:"登录成功后的跳转地址"`
+}
+
+type WechatLoginAuthorizeModel struct{}

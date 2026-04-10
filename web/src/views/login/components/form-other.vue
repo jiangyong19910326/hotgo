@@ -59,8 +59,9 @@
   }
 
   function handleLoginWechat() {
-    console.log('handleLoginWechat...');
-    message.info('暂未开放');
+    // 登录成功后微信回调到当前页面，携带 wechat_token 参数
+    const syncRedirect = window.location.href.split('?')[0];
+    userStore.wechatLogin(syncRedirect);
   }
 </script>
 

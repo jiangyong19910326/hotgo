@@ -51,6 +51,9 @@ var (
 				// 注册Api路由
 				router.Api(ctx, group)
 
+				// 注册开放接口路由（签名验签）
+				router.Open(ctx, group)
+
 				// 注册websocket路由
 				router.WebSocket(ctx, group)
 

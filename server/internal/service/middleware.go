@@ -1,8 +1,4 @@
-// ================================================================================
-// Code generated and maintained by GoFrame CLI tool. DO NOT EDIT.
-// You can delete these comments if you wish manually maintain this interface file.
-// ================================================================================
-
+// Package service — middleware interface (manually maintained).
 package service
 
 import (
@@ -44,6 +40,8 @@ type (
 		ResponseHandler(r *ghttp.Request)
 		// WebSocketAuth websocket鉴权中间件
 		WebSocketAuth(r *ghttp.Request)
+		// SignAuth HMAC-SHA256 签名验证中间件（用于 /open 路由组）
+		SignAuth(r *ghttp.Request)
 	}
 )
 

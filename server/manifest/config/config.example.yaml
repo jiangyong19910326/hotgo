@@ -139,6 +139,7 @@ router:
     exceptLogin: [
       "/sms/send",              # 短信验证码
       "/wechat/authorizeCall",  # 微信用户授权回调
+      "/wechat/loginAuthorize", # 微信登录授权（无需已登录）
     ]
     # 不需要验证权限的路由地址
     exceptAuth: [
