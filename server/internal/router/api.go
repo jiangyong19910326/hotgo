@@ -10,6 +10,7 @@ import (
 	"hotgo/internal/consts"
 	"hotgo/internal/controller/api/member"
 	"hotgo/internal/controller/api/pay"
+	apiplc "hotgo/internal/controller/api/plc"
 	"hotgo/internal/controller/api/shortlink"
 	"hotgo/internal/service"
 	"hotgo/utility/simple"
@@ -23,6 +24,7 @@ func Api(ctx context.Context, group *ghttp.RouterGroup) {
 		group.Bind(
 			pay.NewV1(),       // 支付异步通知
 			shortlink.NewV1(), // 短链接
+			apiplc.NewV1(),    // PLC 前台接口（暂未启用签名验签）
 		)
 		group.Middleware(service.Middleware().ApiAuth)
 		group.Bind(

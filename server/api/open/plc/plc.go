@@ -15,6 +15,45 @@ type RealtimeReq struct {
 	DeviceId int `p:"deviceId" v:"required|min:1#设备ID不能为空" dc:"设备ID"`
 }
 
+// OverviewReq 看板汇总: 设备 + 数据点 + 实时值
+type OverviewReq struct {
+	g.Meta   `path:"/plc/overview" method:"get" tags:"PLC开放接口" summary:"看板汇总(设备+数据点+实时值)"`
+	DeviceId int `p:"deviceId" v:"required|min:1#设备ID不能为空" dc:"设备ID"`
+}
+
+// OverviewDevice 设备信息
+type OverviewDevice struct {
+	Id       int    `json:"id"`
+	MineId   int    `json:"mineId"`
+	MineName string `json:"mineName"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Remark   string `json:"remark"`
+	Status   int    `json:"status"`
+}
+
+// OverviewPoint 数据点 + 实时值
+type OverviewPoint struct {
+	PointId   int      `json:"pointId"`
+	Field     string   `json:"field"`
+	Name      string   `json:"name"`
+	DataType  string   `json:"dataType"`
+	Unit      string   `json:"unit"`
+	Scale     float64  `json:"scale"`
+	OffsetVal float64  `json:"offsetVal"`
+	AlarmMin  *float64 `json:"alarmMin,omitempty"`
+	AlarmMax  *float64 `json:"alarmMax,omitempty"`
+	Sort      int      `json:"sort"`
+	EngValue  *float64 `json:"engValue"`
+	AlarmType int      `json:"alarmType"`
+}
+
+// OverviewRes 汇总响应
+type OverviewRes struct {
+	Device *OverviewDevice  `json:"device"`
+	Points []*OverviewPoint `json:"points"`
+}
+
 // RealtimePointItem 单个点位实时值
 type RealtimePointItem struct {
 	PointId   int     `json:"pointId"`

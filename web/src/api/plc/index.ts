@@ -1,5 +1,25 @@
 import { http } from '@/utils/http/axios';
 
+// ─── 矿场 ────────────────────────────────────────────────────
+export function MineList(params?: any) {
+  return http.request({ url: '/plc/mine/list', method: 'GET', params });
+}
+export function MineView(params: any) {
+  return http.request({ url: '/plc/mine/view', method: 'GET', params });
+}
+export function MineEdit(params: any) {
+  return http.request({ url: '/plc/mine/edit', method: 'POST', params });
+}
+export function MineDelete(params: any) {
+  return http.request({ url: '/plc/mine/delete', method: 'POST', params });
+}
+export function MineStatus(params: any) {
+  return http.request({ url: '/plc/mine/status', method: 'POST', params });
+}
+export function MineOptions() {
+  return http.request({ url: '/plc/mine/options', method: 'GET' });
+}
+
 // ─── 设备 ────────────────────────────────────────────────────
 export function DeviceList(params?: any) {
   return http.request({ url: '/plc/device/list', method: 'GET', params });
@@ -38,6 +58,23 @@ export function PointStatus(params: any) {
 export function Realtime(params: any) {
   return http.request({ url: '/plc/realtime', method: 'GET', params });
 }
+// 看板汇总: 一次拉 设备 + 数据点 + 实时值
+export function Overview(params: { deviceId: number }) {
+  return http.request({ url: '/plc/overview', method: 'GET', params });
+}
+
+// 单点位历史时序 (画图用), 走前台 /api 路径不验签
+export function PointHistory(params: {
+  pointId: number;
+  startTime?: string;
+  endTime?: string;
+  limit?: number;
+}) {
+  return http.request(
+    { url: '/plc/history', method: 'GET', params },
+    { urlPrefix: '/api' }
+  );
+}
 
 // ─── 历史记录 ─────────────────────────────────────────────────
 export function History(params: any) {
@@ -50,4 +87,24 @@ export function AlarmList(params?: any) {
 }
 export function AlarmResolve(params: any) {
   return http.request({ url: '/plc/alarm/resolve', method: 'POST', params });
+}
+
+// ─── 应用密钥 ─────────────────────────────────────────────────
+export function AppList(params?: any) {
+  return http.request({ url: '/plc/app/list', method: 'GET', params });
+}
+export function AppView(params: any) {
+  return http.request({ url: '/plc/app/view', method: 'GET', params });
+}
+export function AppEdit(params: any) {
+  return http.request({ url: '/plc/app/edit', method: 'POST', params });
+}
+export function AppDelete(params: any) {
+  return http.request({ url: '/plc/app/delete', method: 'POST', params });
+}
+export function AppStatus(params: any) {
+  return http.request({ url: '/plc/app/status', method: 'POST', params });
+}
+export function AppGenSecret() {
+  return http.request({ url: '/plc/app/genSecret', method: 'GET' });
 }

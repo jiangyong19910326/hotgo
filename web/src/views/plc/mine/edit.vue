@@ -6,8 +6,8 @@
       :show-icon="false"
       preset="dialog"
       transform-origin="center"
-      :title="formValue.id > 0 ? '编辑设备 #' + formValue.id : '添加设备'"
-      :style="{ width: '560px' }"
+      :title="formValue.id > 0 ? '编辑矿场 #' + formValue.id : '添加矿场'"
+      :style="{ width: '480px' }"
     >
       <n-spin :show="loading" description="请稍候...">
         <n-form
@@ -15,22 +15,14 @@
           :model="formValue"
           :rules="rules"
           label-placement="left"
-          :label-width="120"
+          :label-width="90"
           class="py-4"
         >
-          <n-form-item label="所属矿场">
-            <n-select
-              v-model:value="formValue.mineId"
-              :options="mineOptions"
-              placeholder="请选择所属矿场"
-              clearable
-            />
+          <n-form-item label="矿场名称" path="name">
+            <n-input v-model:value="formValue.name" placeholder="请输入矿场名称" />
           </n-form-item>
-          <n-form-item label="设备名称" path="name">
-            <n-input v-model:value="formValue.name" placeholder="请输入设备名称" />
-          </n-form-item>
-          <n-form-item label="DTU 设备编号" path="host">
-            <n-input v-model:value="formValue.host" placeholder="如 113200006045（MQTT topic 中的设备编号）" />
+          <n-form-item label="地理位置">
+            <n-input v-model:value="formValue.location" placeholder="如：新疆维吾尔自治区" />
           </n-form-item>
           <n-form-item label="状态">
             <n-radio-group v-model:value="formValue.status">
@@ -54,27 +46,20 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref, onMounted } from 'vue';
+  import { ref } from 'vue';
   import { useMessage } from 'naive-ui';
-  import { DeviceEdit, MineOptions } from '@/api/plc';
+  import { MineEdit } from '@/api/plc';
 
   const emit = defineEmits(['reloadTable']);
   const message = useMessage();
   const formRef = ref();
   const showModal = ref(false);
   const loading = ref(false);
-  const mineOptions = ref<{ label: string; value: number }[]>([]);
-
-  onMounted(async () => {
-    const res = await MineOptions();
-    mineOptions.value = (res?.list ?? []).map((m: any) => ({ label: m.name, value: m.id }));
-  });
 
   const defaultForm = () => ({
     id: 0,
-    mineId: null,
     name: '',
-    host: '',
+    location: '',
     remark: '',
     status: 1,
   });
@@ -82,8 +67,7 @@
   const formValue = ref(defaultForm());
 
   const rules = {
-    name: { required: true, message: '请输入设备名称', trigger: ['blur', 'input'] },
-    host: { required: true, message: '请输入 DTU 设备编号', trigger: ['blur', 'input'] },
+    name: { required: true, message: '请输入矿场名称', trigger: ['blur', 'input'] },
   };
 
   function openModal(row: any) {
@@ -103,7 +87,7 @@
     try {
       await formRef.value?.validate();
       loading.value = true;
-      await DeviceEdit(formValue.value);
+      await MineEdit(formValue.value);
       message.success('保存成功');
       closeModal();
       emit('reloadTable');

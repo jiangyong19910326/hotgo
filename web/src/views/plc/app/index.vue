@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="n-layout-page-header">
-      <n-card :bordered="false" title="PLC 设备管理" />
+      <n-card :bordered="false" title="应用密钥管理" />
     </div>
     <n-card :bordered="false" class="proCard">
       <BasicForm
@@ -21,9 +21,9 @@
         :resizeHeightOffset="-10000"
       >
         <template #tableTitle>
-          <n-button type="primary" @click="addTable" class="min-left-space">
+          <n-button type="primary" @click="addRow" class="min-left-space">
             <template #icon><n-icon><PlusOutlined /></n-icon></template>
-            添加设备
+            添加应用
           </n-button>
         </template>
       </BasicTable>
@@ -33,49 +33,26 @@
 </template>
 
 <script lang="ts" setup>
-  import { h, ref, reactive, onMounted } from 'vue';
-  import { useDialog, useMessage, NTag } from 'naive-ui';
-  import { PlusOutlined } from '@vicons/antd';
+  import { h, ref, reactive } from 'vue';
+  import { useDialog, useMessage, NTag, NButton } from 'naive-ui';
+  import { PlusOutlined, CopyOutlined } from '@vicons/antd';
   import { BasicTable, TableAction } from '@/components/Table';
   import { BasicForm, useForm } from '@/components/Form/index';
-  import { usePermission } from '@/hooks/web/usePermission';
-  import { DeviceList, DeviceDelete, DeviceStatus, MineOptions } from '@/api/plc';
+  import { AppList, AppDelete, AppStatus } from '@/api/plc';
   import Edit from './edit.vue';
 
-  const { hasPermission } = usePermission();
   const message = useMessage();
   const dialog = useDialog();
   const editRef = ref();
   const actionRef = ref();
   const searchFormRef = ref<any>({});
-  const mineOptions = ref<{ label: string; value: number }[]>([]);
-
-  onMounted(async () => {
-    const res = await MineOptions();
-    mineOptions.value = (res?.list ?? []).map((m: any) => ({ label: m.name, value: m.id }));
-  });
 
   const [register] = useForm({
     gridProps: { cols: '1 s:1 m:2 l:3 xl:4 2xl:4' },
     labelWidth: 80,
     schemas: [
-      {
-        field: 'mineId',
-        component: 'NSelect',
-        label: '所属矿场',
-        defaultValue: null,
-        componentProps: {
-          placeholder: '全部矿场',
-          options: mineOptions,
-          clearable: true,
-        },
-      },
-      {
-        field: 'name',
-        component: 'NInput',
-        label: '设备名称',
-        componentProps: { placeholder: '请输入名称' },
-      },
+      { field: 'appId', component: 'NInput', label: 'AppID', componentProps: { placeholder: '请输入 AppID' } },
+      { field: 'name', component: 'NInput', label: '应用名称', componentProps: { placeholder: '请输入名称' } },
       {
         field: 'status',
         component: 'NSelect',
@@ -92,16 +69,45 @@
     ],
   });
 
+  function maskSecret(s: string) {
+    if (!s) return '';
+    if (s.length <= 8) return s;
+    return s.slice(0, 4) + '****' + s.slice(-4);
+  }
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success('已复制到剪贴板');
+    } catch {
+      message.error('复制失败，请手动复制');
+    }
+  }
+
   const columns = [
     { title: 'ID', key: 'id', width: 70 },
-    { title: '所属矿场', key: 'mineName', width: 130, ellipsis: { tooltip: true } },
-    { title: '设备名称', key: 'name', width: 180 },
-    { title: 'DTU 设备编号', key: 'host', width: 180 },
+    { title: 'AppID', key: 'appId', width: 180 },
+    {
+      title: 'AppSecret',
+      key: 'appSecret',
+      width: 280,
+      render(row: any) {
+        return h('div', { style: 'display:flex;align-items:center;gap:8px' }, [
+          h('code', { style: 'font-size:12px;color:#666' }, maskSecret(row.appSecret)),
+          h(
+            NButton,
+            { size: 'tiny', quaternary: true, onClick: () => copyText(row.appSecret) },
+            { default: () => '复制', icon: () => h(CopyOutlined as any) }
+          ),
+        ]);
+      },
+    },
+    { title: '应用名称', key: 'name', width: 160 },
     {
       title: '状态',
       key: 'status',
       width: 80,
-      render(row) {
+      render(row: any) {
         return h(NTag, { type: row.status === 1 ? 'success' : 'error', size: 'small' }, { default: () => (row.status === 1 ? '启用' : '禁用') });
       },
     },
@@ -110,55 +116,41 @@
   ];
 
   const actionColumn = reactive({
-    width: 220,
+    width: 200,
     title: '操作',
     key: 'action',
     fixed: 'right',
-    render(record) {
+    render(record: any) {
       return h(TableAction as any, {
         style: 'button',
         actions: [
-          {
-            label: '编辑',
-            onClick: () => editRef.value.openModal(record),
-            auth: ['/plc/device/edit'],
-          },
+          { label: '编辑', onClick: () => editRef.value.openModal(record), auth: ['/plc/app/edit'] },
           {
             label: record.status === 1 ? '禁用' : '启用',
             type: record.status === 1 ? 'error' : 'success',
             onClick: () => handleStatus(record),
           },
-          {
-            label: '删除',
-            type: 'error',
-            onClick: () => handleDelete(record),
-            auth: ['/plc/device/delete'],
-          },
+          { label: '删除', type: 'error', onClick: () => handleDelete(record), auth: ['/plc/app/delete'] },
         ],
       });
     },
   });
 
-  const loadDataTable = async (res) => {
-    return await DeviceList({ ...searchFormRef.value?.formModel, ...res });
+  const loadDataTable = async (res: any) => {
+    return await AppList({ ...searchFormRef.value?.formModel, ...res });
   };
 
-  function reloadTable() {
-    actionRef.value?.reload();
-  }
+  function reloadTable() { actionRef.value?.reload(); }
+  function addRow() { editRef.value.openModal(null); }
 
-  function addTable() {
-    editRef.value.openModal(null);
-  }
-
-  function handleDelete(record) {
+  function handleDelete(record: any) {
     dialog.warning({
       title: '警告',
-      content: `确认删除设备【${record.name}】？`,
+      content: `确认删除应用【${record.name}】？删除后该应用的签名将立即失效。`,
       positiveText: '确定',
       negativeText: '取消',
       onPositiveClick: () => {
-        DeviceDelete({ id: record.id }).then(() => {
+        AppDelete({ id: record.id }).then(() => {
           message.success('删除成功');
           reloadTable();
         });
@@ -166,8 +158,8 @@
     });
   }
 
-  function handleStatus(record) {
-    DeviceStatus({ id: record.id, status: record.status === 1 ? 2 : 1 }).then(() => {
+  function handleStatus(record: any) {
+    AppStatus({ id: record.id, status: record.status === 1 ? 2 : 1 }).then(() => {
       message.success('状态已更新');
       reloadTable();
     });

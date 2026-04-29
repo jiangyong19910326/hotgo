@@ -11,20 +11,19 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// PlcDeviceDao is the data access object for the table hg_plc_device.
-type PlcDeviceDao struct {
+// PlcMineDao is the data access object for the table hg_plc_mine.
+type PlcMineDao struct {
 	table    string
 	group    string
-	columns  PlcDeviceColumns
+	columns  PlcMineColumns
 	handlers []gdb.ModelHandler
 }
 
-// PlcDeviceColumns defines and stores column names for the table hg_plc_device.
-type PlcDeviceColumns struct {
+// PlcMineColumns defines and stores column names for the table hg_plc_mine.
+type PlcMineColumns struct {
 	Id        string
-	MineId    string
 	Name      string
-	Host      string
+	Location  string
 	Remark    string
 	Status    string
 	CreatedBy string
@@ -34,11 +33,10 @@ type PlcDeviceColumns struct {
 	DeletedAt string
 }
 
-var plcDeviceColumns = PlcDeviceColumns{
+var plcMineColumns = PlcMineColumns{
 	Id:        "id",
-	MineId:    "mine_id",
 	Name:      "name",
-	Host:      "host",
+	Location:  "location",
 	Remark:    "remark",
 	Status:    "status",
 	CreatedBy: "created_by",
@@ -48,21 +46,21 @@ var plcDeviceColumns = PlcDeviceColumns{
 	DeletedAt: "deleted_at",
 }
 
-func NewPlcDeviceDao(handlers ...gdb.ModelHandler) *PlcDeviceDao {
-	return &PlcDeviceDao{
+func NewPlcMineDao(handlers ...gdb.ModelHandler) *PlcMineDao {
+	return &PlcMineDao{
 		group:    "default",
-		table:    "hg_plc_device",
-		columns:  plcDeviceColumns,
+		table:    "hg_plc_mine",
+		columns:  plcMineColumns,
 		handlers: handlers,
 	}
 }
 
-func (dao *PlcDeviceDao) DB() gdb.DB                 { return g.DB(dao.group) }
-func (dao *PlcDeviceDao) Table() string              { return dao.table }
-func (dao *PlcDeviceDao) Columns() PlcDeviceColumns  { return dao.columns }
-func (dao *PlcDeviceDao) Group() string              { return dao.group }
+func (dao *PlcMineDao) DB() gdb.DB              { return g.DB(dao.group) }
+func (dao *PlcMineDao) Table() string            { return dao.table }
+func (dao *PlcMineDao) Columns() PlcMineColumns  { return dao.columns }
+func (dao *PlcMineDao) Group() string            { return dao.group }
 
-func (dao *PlcDeviceDao) Ctx(ctx context.Context) *gdb.Model {
+func (dao *PlcMineDao) Ctx(ctx context.Context) *gdb.Model {
 	model := dao.DB().Model(dao.table)
 	for _, h := range dao.handlers {
 		model = h(model)
@@ -70,6 +68,6 @@ func (dao *PlcDeviceDao) Ctx(ctx context.Context) *gdb.Model {
 	return model.Safe().Ctx(ctx)
 }
 
-func (dao *PlcDeviceDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) error {
+func (dao *PlcMineDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) error {
 	return dao.Ctx(ctx).Transaction(ctx, f)
 }

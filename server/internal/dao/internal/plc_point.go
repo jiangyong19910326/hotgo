@@ -21,47 +21,39 @@ type PlcPointDao struct {
 
 // PlcPointColumns defines and stores column names for the table hg_plc_point.
 type PlcPointColumns struct {
-	Id         string
-	DeviceId   string
-	Name       string
-	Field      string
-	Area       string
-	DbNumber   string
-	ByteOffset string
-	BitOffset  string
-	DataType   string
-	Scale      string
-	OffsetVal  string
-	Unit       string
-	AlarmMin   string
-	AlarmMax   string
-	Remark     string
-	Sort       string
-	Status     string
-	CreatedAt  string
-	UpdatedAt  string
+	Id        string
+	DeviceId  string
+	Name      string
+	Field     string
+	DataType  string
+	Scale     string
+	OffsetVal string
+	Unit      string
+	AlarmMin  string
+	AlarmMax  string
+	Remark    string
+	Sort      string
+	Status    string
+	CreatedAt string
+	UpdatedAt string
 }
 
 var plcPointColumns = PlcPointColumns{
-	Id:         "id",
-	DeviceId:   "device_id",
-	Name:       "name",
-	Field:      "field",
-	Area:       "area",
-	DbNumber:   "db_number",
-	ByteOffset: "byte_offset",
-	BitOffset:  "bit_offset",
-	DataType:   "data_type",
-	Scale:      "scale",
-	OffsetVal:  "offset_val",
-	Unit:       "unit",
-	AlarmMin:   "alarm_min",
-	AlarmMax:   "alarm_max",
-	Remark:     "remark",
-	Sort:       "sort",
-	Status:     "status",
-	CreatedAt:  "created_at",
-	UpdatedAt:  "updated_at",
+	Id:        "id",
+	DeviceId:  "device_id",
+	Name:      "name",
+	Field:     "field",
+	DataType:  "data_type",
+	Scale:     "scale",
+	OffsetVal: "offset_val",
+	Unit:      "unit",
+	AlarmMin:  "alarm_min",
+	AlarmMax:  "alarm_max",
+	Remark:    "remark",
+	Sort:      "sort",
+	Status:    "status",
+	CreatedAt: "created_at",
+	UpdatedAt: "updated_at",
 }
 
 func NewPlcPointDao(handlers ...gdb.ModelHandler) *PlcPointDao {
@@ -73,10 +65,10 @@ func NewPlcPointDao(handlers ...gdb.ModelHandler) *PlcPointDao {
 	}
 }
 
-func (dao *PlcPointDao) DB() gdb.DB          { return g.DB(dao.group) }
-func (dao *PlcPointDao) Table() string        { return dao.table }
-func (dao *PlcPointDao) Columns() PlcPointColumns { return dao.columns }
-func (dao *PlcPointDao) Group() string        { return dao.group }
+func (dao *PlcPointDao) DB() gdb.DB                { return g.DB(dao.group) }
+func (dao *PlcPointDao) Table() string             { return dao.table }
+func (dao *PlcPointDao) Columns() PlcPointColumns  { return dao.columns }
+func (dao *PlcPointDao) Group() string             { return dao.group }
 
 func (dao *PlcPointDao) Ctx(ctx context.Context) *gdb.Model {
 	model := dao.DB().Model(dao.table)

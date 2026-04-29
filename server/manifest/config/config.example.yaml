@@ -68,6 +68,17 @@ server:
     <<: *defaultLogger
 
 
+# MQTT 订阅 (DTU 数据接入)
+# 留空 addr 时不启动 MQTT 订阅
+mqtt:
+  addr: ""                                                        # broker 地址，例如 "tcp://broker.example.com:1883"
+  clientId: "hotgo-mqtt-sub"                                      # 客户端 ID，集群部署需保证唯一
+  username: ""                                                    # 用户名（可选）
+  password: ""                                                    # 密码（可选）
+  topic: "/dtu/+/data"                                            # 订阅 topic，使用 + 通配 deviceCode
+  qos: 0                                                          # QoS 等级，0=最多一次
+
+
 # tcp服务
 tcp:
   # 服务器

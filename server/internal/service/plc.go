@@ -11,7 +11,24 @@ import (
 	"github.com/gogf/gf/v2/database/gdb"
 )
 
+// PlcPointAuto MQTT 自动建点位的最小参数
+type PlcPointAuto struct {
+	Field    string
+	DataType string
+}
+
 type (
+	// IPlcMine 矿场管理
+	IPlcMine interface {
+		Model(ctx context.Context, option ...*handler.Option) *gdb.Model
+		List(ctx context.Context, in *sysin.PlcMineListInp) (list []*sysin.PlcMineListModel, totalCount int, err error)
+		View(ctx context.Context, in *sysin.PlcMineViewInp) (res *sysin.PlcMineViewModel, err error)
+		Edit(ctx context.Context, in *sysin.PlcMineEditInp) (err error)
+		Delete(ctx context.Context, in *sysin.PlcMineDeleteInp) (err error)
+		Status(ctx context.Context, in *sysin.PlcMineStatusInp) (err error)
+		Options(ctx context.Context) (list []*sysin.PlcMineOption, err error)
+	}
+
 	// IPlcDevice PLC 设备管理
 	IPlcDevice interface {
 		Model(ctx context.Context, option ...*handler.Option) *gdb.Model
@@ -22,6 +39,7 @@ type (
 		Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (err error)
 		ActiveDevices(ctx context.Context) (list []*entity.PlcDevice, err error)
 		GetById(ctx context.Context, id int) (dev *entity.PlcDevice, err error)
+		CreateByCode(ctx context.Context, code string) (dev *entity.PlcDevice, err error)
 	}
 
 	// IPlcPoint 数据点管理
@@ -33,12 +51,14 @@ type (
 		Delete(ctx context.Context, in *sysin.PlcPointDeleteInp) (err error)
 		Status(ctx context.Context, in *sysin.PlcPointStatusInp) (err error)
 		ActivePoints(ctx context.Context, deviceId int) (list []*entity.PlcPoint, err error)
+		CreateByFields(ctx context.Context, deviceId int, items []PlcPointAuto) (list []*entity.PlcPoint, err error)
 	}
 
 	// IPlcRealtime 实时数据
 	IPlcRealtime interface {
 		Get(ctx context.Context, in *sysin.PlcRealtimeInp) (res *sysin.PlcRealtimeModel, err error)
 		Set(ctx context.Context, deviceId int, items []*sysin.PlcRealtimeItem) error
+		Overview(ctx context.Context, in *sysin.PlcOverviewInp) (res *sysin.PlcOverviewModel, err error)
 	}
 
 	// IPlcHistory 历史记录
@@ -56,11 +76,19 @@ type (
 
 	// IPlcApp PLC API应用密钥管理
 	IPlcApp interface {
+		Model(ctx context.Context, option ...*handler.Option) *gdb.Model
 		GetSecretByAppId(ctx context.Context, appId string) (appSecret string, err error)
+		List(ctx context.Context, in *sysin.PlcAppListInp) (list []*sysin.PlcAppListModel, totalCount int, err error)
+		View(ctx context.Context, in *sysin.PlcAppViewInp) (res *sysin.PlcAppViewModel, err error)
+		Edit(ctx context.Context, in *sysin.PlcAppEditInp) (err error)
+		Delete(ctx context.Context, in *sysin.PlcAppDeleteInp) (err error)
+		Status(ctx context.Context, in *sysin.PlcAppStatusInp) (err error)
+		GenSecret(ctx context.Context) (secret string)
 	}
 )
 
 var (
+	localPlcMine     IPlcMine
 	localPlcDevice   IPlcDevice
 	localPlcPoint    IPlcPoint
 	localPlcRealtime IPlcRealtime
@@ -68,6 +96,15 @@ var (
 	localPlcAlarm    IPlcAlarm
 	localPlcApp      IPlcApp
 )
+
+func PlcMine() IPlcMine {
+	if localPlcMine == nil {
+		panic("implement not found for interface IPlcMine, forgot register?")
+	}
+	return localPlcMine
+}
+
+func RegisterPlcMine(i IPlcMine) { localPlcMine = i }
 
 func PlcDevice() IPlcDevice {
 	if localPlcDevice == nil {

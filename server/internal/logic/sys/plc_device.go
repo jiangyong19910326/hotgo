@@ -7,7 +7,6 @@ import (
 	"hotgo/internal/dao"
 	"hotgo/internal/library/contexts"
 	"hotgo/internal/library/hgorm/handler"
-	"hotgo/internal/library/plc"
 	"hotgo/internal/model/entity"
 	"hotgo/internal/model/input/sysin"
 	"hotgo/internal/service"
@@ -32,21 +31,27 @@ func (s *sPlcDevice) Model(ctx context.Context, option ...*handler.Option) *gdb.
 
 // List 获取设备列表
 func (s *sPlcDevice) List(ctx context.Context, in *sysin.PlcDeviceListInp) (list []*sysin.PlcDeviceListModel, totalCount int, err error) {
-	mod := s.Model(ctx)
+	d := dao.PlcDevice.Columns()
+	mod := s.Model(ctx).
+		LeftJoin("hg_plc_mine m", "m.id = "+dao.PlcDevice.Table()+"."+d.MineId)
+
+	if in.MineId > 0 {
+		mod = mod.Where(dao.PlcDevice.Table()+"."+d.MineId, in.MineId)
+	}
 	if in.Name != "" {
-		mod = mod.WhereLike(dao.PlcDevice.Columns().Name, "%"+in.Name+"%")
+		mod = mod.WhereLike(dao.PlcDevice.Table()+"."+d.Name, "%"+in.Name+"%")
 	}
 	if in.Status > 0 {
-		mod = mod.Where(dao.PlcDevice.Columns().Status, in.Status)
+		mod = mod.Where(dao.PlcDevice.Table()+"."+d.Status, in.Status)
 	}
-	mod = mod.WhereNull(dao.PlcDevice.Columns().DeletedAt)
 
-	totalCount, err = mod.Count()
+	totalCount, err = mod.Clone().Count()
 	if err != nil {
 		return
 	}
-	err = mod.Page(in.Page, in.PerPage).
-		OrderDesc(dao.PlcDevice.Columns().Id).
+	err = mod.Fields(dao.PlcDevice.Table()+".*", "m.name as mine_name").
+		Page(in.Page, in.PerPage).
+		OrderDesc(dao.PlcDevice.Table()+"."+d.Id).
 		Scan(&list)
 	return
 }
@@ -54,18 +59,17 @@ func (s *sPlcDevice) List(ctx context.Context, in *sysin.PlcDeviceListInp) (list
 // View 获取设备详情
 func (s *sPlcDevice) View(ctx context.Context, in *sysin.PlcDeviceViewInp) (res *sysin.PlcDeviceViewModel, err error) {
 	res = new(sysin.PlcDeviceViewModel)
-	err = s.Model(ctx).Where(dao.PlcDevice.Columns().Id, in.Id).Scan(res)
+	d := dao.PlcDevice.Columns()
+	err = s.Model(ctx).
+		LeftJoin("hg_plc_mine m", "m.id = "+dao.PlcDevice.Table()+"."+d.MineId).
+		Fields(dao.PlcDevice.Table()+".*", "m.name as mine_name").
+		Where(dao.PlcDevice.Table()+"."+d.Id, in.Id).
+		Scan(res)
 	return
 }
 
 // Edit 新增/修改设备
 func (s *sPlcDevice) Edit(ctx context.Context, in *sysin.PlcDeviceEditInp) (err error) {
-	if in.Port <= 0 {
-		in.Port = 102
-	}
-	if in.IntervalMs <= 0 {
-		in.IntervalMs = 1000
-	}
 	if in.Status == 0 {
 		in.Status = 1
 	}
@@ -78,33 +82,25 @@ func (s *sPlcDevice) Edit(ctx context.Context, in *sysin.PlcDeviceEditInp) (err 
 
 	if in.Id > 0 {
 		_, err = s.Model(ctx).Where(dao.PlcDevice.Columns().Id, in.Id).Data(g.Map{
-			dao.PlcDevice.Columns().Name:       in.Name,
-			dao.PlcDevice.Columns().Host:       in.Host,
-			dao.PlcDevice.Columns().Port:       in.Port,
-			dao.PlcDevice.Columns().Rack:       in.Rack,
-			dao.PlcDevice.Columns().Slot:       in.Slot,
-			dao.PlcDevice.Columns().IntervalMs: in.IntervalMs,
-			dao.PlcDevice.Columns().Remark:     in.Remark,
-			dao.PlcDevice.Columns().Status:     in.Status,
-			dao.PlcDevice.Columns().UpdatedBy:  uid,
-			dao.PlcDevice.Columns().UpdatedAt:  gtime.Now(),
+			dao.PlcDevice.Columns().MineId:    in.MineId,
+			dao.PlcDevice.Columns().Name:      in.Name,
+			dao.PlcDevice.Columns().Host:      in.Host,
+			dao.PlcDevice.Columns().Remark:    in.Remark,
+			dao.PlcDevice.Columns().Status:    in.Status,
+			dao.PlcDevice.Columns().UpdatedBy: uid,
+			dao.PlcDevice.Columns().UpdatedAt: gtime.Now(),
 		}).Update()
-		// 设备配置变更，移除旧连接，下次采集时重建
-		plc.Remove(in.Id)
 	} else {
 		_, err = s.Model(ctx).Data(&entity.PlcDevice{
-			Name:       in.Name,
-			Host:       in.Host,
-			Port:       in.Port,
-			Rack:       in.Rack,
-			Slot:       in.Slot,
-			IntervalMs: in.IntervalMs,
-			Remark:     in.Remark,
-			Status:     in.Status,
-			CreatedBy:  uid,
-			UpdatedBy:  uid,
-			CreatedAt:  gtime.Now(),
-			UpdatedAt:  gtime.Now(),
+			MineId:    in.MineId,
+			Name:      in.Name,
+			Host:      in.Host,
+			Remark:    in.Remark,
+			Status:    in.Status,
+			CreatedBy: uid,
+			UpdatedBy: uid,
+			CreatedAt: gtime.Now(),
+			UpdatedAt: gtime.Now(),
 		}).Insert()
 	}
 	return
@@ -123,13 +119,10 @@ func (s *sPlcDevice) Delete(ctx context.Context, in *sysin.PlcDeviceDeleteInp) (
 func (s *sPlcDevice) Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (err error) {
 	_, err = s.Model(ctx).Where(dao.PlcDevice.Columns().Id, in.Id).
 		Data(g.Map{dao.PlcDevice.Columns().Status: in.Status}).Update()
-	if in.Status == 2 {
-		plc.Remove(in.Id)
-	}
 	return
 }
 
-// ActiveDevices 获取所有启用中的设备列表（供 Cron 使用）
+// ActiveDevices 获取所有启用中的设备列表（供 MQTT 订阅器使用）
 func (s *sPlcDevice) ActiveDevices(ctx context.Context) (list []*entity.PlcDevice, err error) {
 	err = s.Model(ctx).
 		Where(dao.PlcDevice.Columns().Status, 1).
@@ -146,4 +139,25 @@ func (s *sPlcDevice) GetById(ctx context.Context, id int) (dev *entity.PlcDevice
 		return nil, gerror.Newf("设备不存在: %d", id)
 	}
 	return
+}
+
+// CreateByCode 按 DTU 编号创建设备（MQTT 自动接入用）
+func (s *sPlcDevice) CreateByCode(ctx context.Context, code string) (dev *entity.PlcDevice, err error) {
+	now := gtime.Now()
+	row := &entity.PlcDevice{
+		MineId:    0,
+		Name:      code,
+		Host:      code,
+		Remark:    "MQTT 自动接入",
+		Status:    1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	res, err := s.Model(ctx).Data(row).Insert()
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	row.Id = int(id)
+	return row, nil
 }

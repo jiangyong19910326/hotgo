@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"hotgo/internal/dao"
 	"hotgo/internal/model/input/sysin"
 	"hotgo/internal/service"
 
@@ -57,8 +58,7 @@ func (s *sPlcRealtime) Set(ctx context.Context, deviceId int, items []*sysin.Plc
 			return err
 		}
 	}
-	// 设置过期时间：采集间隔 * 10，防止设备下线后数据无限留存
-	_, _ = rds.Do(ctx, "EXPIRE", key, 600)
+	// 不设过期: 设备掉线时仍展示最后状态, 删设备/手动 DEL 才清
 	return nil
 }
 
@@ -87,4 +87,97 @@ func (s *sPlcRealtime) Get(ctx context.Context, in *sysin.PlcRealtimeInp) (res *
 		res.Points = append(res.Points, &item)
 	}
 	return
+}
+
+// Overview 看板汇总: 设备信息 + 全部启用点位 (按sort排序) + 实时值合并
+// Redis 实时缓存命中优先; 缓存miss的点位用 hg_plc_record 最新一条 DB fallback
+func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (res *sysin.PlcOverviewModel, err error) {
+	devView, err := service.PlcDevice().View(ctx, &sysin.PlcDeviceViewInp{Id: in.DeviceId})
+	if err != nil {
+		return nil, err
+	}
+	if devView == nil || devView.Id == 0 {
+		return nil, nil
+	}
+
+	points, err := service.PlcPoint().ActivePoints(ctx, in.DeviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	// 拉一次实时缓存
+	rt, err := s.Get(ctx, &sysin.PlcRealtimeInp{DeviceId: in.DeviceId})
+	if err != nil {
+		return nil, err
+	}
+	rtMap := make(map[string]*sysin.PlcRealtimeItem, len(rt.Points))
+	for _, p := range rt.Points {
+		rtMap[p.Field] = p
+	}
+
+	// 收集缓存miss的pointId, 一次批量从record表取最新
+	var missIds []int
+	for _, p := range points {
+		if _, ok := rtMap[p.Field]; !ok {
+			missIds = append(missIds, p.Id)
+		}
+	}
+	dbFallback := make(map[int]float64) // pointId → engValue
+	if len(missIds) > 0 {
+		var rows []struct {
+			PointId  int      `orm:"point_id"`
+			EngValue *float64 `orm:"eng_value"`
+		}
+		// 子查询: 每个 point 的最大 collected_at 对应一条
+		err = dao.PlcRecord.Ctx(ctx).
+			Fields("point_id, eng_value").
+			Where("id IN (?)",
+				dao.PlcRecord.Ctx(ctx).
+					Fields("MAX(id) as id").
+					WhereIn("point_id", missIds).
+					Group("point_id"),
+			).Scan(&rows)
+		if err == nil {
+			for _, r := range rows {
+				if r.EngValue != nil {
+					dbFallback[r.PointId] = *r.EngValue
+				}
+			}
+		}
+	}
+
+	out := &sysin.PlcOverviewModel{
+		Device: devView,
+		Points: make([]*sysin.PlcOverviewPoint, 0, len(points)),
+	}
+	for _, p := range points {
+		op := &sysin.PlcOverviewPoint{
+			PointId:   p.Id,
+			Field:     p.Field,
+			Name:      p.Name,
+			DataType:  p.DataType,
+			Unit:      p.Unit,
+			Scale:     p.Scale,
+			OffsetVal: p.OffsetVal,
+			AlarmMin:  p.AlarmMin,
+			AlarmMax:  p.AlarmMax,
+			Sort:      p.Sort,
+		}
+		if r, ok := rtMap[p.Field]; ok {
+			v := r.EngValue
+			op.EngValue = &v
+			op.AlarmType = r.AlarmType
+		} else if v, ok := dbFallback[p.Id]; ok {
+			vv := v
+			op.EngValue = &vv
+			// 报警判定: 仅用阈值, 不重写
+			if p.AlarmMax != nil && vv > *p.AlarmMax {
+				op.AlarmType = 1
+			} else if p.AlarmMin != nil && vv < *p.AlarmMin {
+				op.AlarmType = 2
+			}
+		}
+		out.Points = append(out.Points, op)
+	}
+	return out, nil
 }

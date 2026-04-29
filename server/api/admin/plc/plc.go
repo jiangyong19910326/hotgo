@@ -9,6 +9,52 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────
+// 矿场管理
+// ─────────────────────────────────────────────────────────────
+
+type MineListReq struct {
+	g.Meta `path:"/plc/mine/list" method:"get" tags:"矿场管理" summary:"获取矿场列表"`
+	sysin.PlcMineListInp
+}
+type MineListRes struct {
+	form.PageRes
+	List []*sysin.PlcMineListModel `json:"list"`
+}
+
+type MineViewReq struct {
+	g.Meta `path:"/plc/mine/view" method:"get" tags:"矿场管理" summary:"获取矿场详情"`
+	sysin.PlcMineViewInp
+}
+type MineViewRes struct {
+	*sysin.PlcMineViewModel
+}
+
+type MineEditReq struct {
+	g.Meta `path:"/plc/mine/edit" method:"post" tags:"矿场管理" summary:"新增/修改矿场"`
+	sysin.PlcMineEditInp
+}
+type MineEditRes struct{}
+
+type MineDeleteReq struct {
+	g.Meta `path:"/plc/mine/delete" method:"post" tags:"矿场管理" summary:"删除矿场"`
+	sysin.PlcMineDeleteInp
+}
+type MineDeleteRes struct{}
+
+type MineStatusReq struct {
+	g.Meta `path:"/plc/mine/status" method:"post" tags:"矿场管理" summary:"更新矿场状态"`
+	sysin.PlcMineStatusInp
+}
+type MineStatusRes struct{}
+
+type MineOptionsReq struct {
+	g.Meta `path:"/plc/mine/options" method:"get" tags:"矿场管理" summary:"获取矿场下拉选项"`
+}
+type MineOptionsRes struct {
+	List []*sysin.PlcMineOption `json:"list"`
+}
+
+// ─────────────────────────────────────────────────────────────
 // 设备管理
 // ─────────────────────────────────────────────────────────────
 
@@ -98,6 +144,14 @@ type RealtimeRes struct {
 	*sysin.PlcRealtimeModel
 }
 
+type OverviewReq struct {
+	g.Meta `path:"/plc/overview" method:"get" tags:"PLC实时" summary:"看板汇总(设备+数据点+实时值)"`
+	sysin.PlcOverviewInp
+}
+type OverviewRes struct {
+	*sysin.PlcOverviewModel
+}
+
 // ─────────────────────────────────────────────────────────────
 // 历史记录
 // ─────────────────────────────────────────────────────────────
@@ -129,3 +183,49 @@ type AlarmResolveReq struct {
 	sysin.PlcAlarmResolveInp
 }
 type AlarmResolveRes struct{}
+
+// ─────────────────────────────────────────────────────────────
+// 应用密钥
+// ─────────────────────────────────────────────────────────────
+
+type AppListReq struct {
+	g.Meta `path:"/plc/app/list" method:"get" tags:"PLC应用密钥" summary:"获取应用密钥列表"`
+	sysin.PlcAppListInp
+}
+type AppListRes struct {
+	form.PageRes
+	List []*sysin.PlcAppListModel `json:"list"`
+}
+
+type AppViewReq struct {
+	g.Meta `path:"/plc/app/view" method:"get" tags:"PLC应用密钥" summary:"获取应用密钥详情"`
+	sysin.PlcAppViewInp
+}
+type AppViewRes struct {
+	*sysin.PlcAppViewModel
+}
+
+type AppEditReq struct {
+	g.Meta `path:"/plc/app/edit" method:"post" tags:"PLC应用密钥" summary:"新增/修改应用密钥"`
+	sysin.PlcAppEditInp
+}
+type AppEditRes struct{}
+
+type AppDeleteReq struct {
+	g.Meta `path:"/plc/app/delete" method:"post" tags:"PLC应用密钥" summary:"删除应用密钥"`
+	sysin.PlcAppDeleteInp
+}
+type AppDeleteRes struct{}
+
+type AppStatusReq struct {
+	g.Meta `path:"/plc/app/status" method:"post" tags:"PLC应用密钥" summary:"更新应用密钥状态"`
+	sysin.PlcAppStatusInp
+}
+type AppStatusRes struct{}
+
+type AppGenSecretReq struct {
+	g.Meta `path:"/plc/app/genSecret" method:"get" tags:"PLC应用密钥" summary:"生成随机AppSecret"`
+}
+type AppGenSecretRes struct {
+	AppSecret string `json:"appSecret"`
+}

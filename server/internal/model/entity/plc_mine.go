@@ -8,12 +8,11 @@ import (
 	"github.com/gogf/gf/v2/os/gtime"
 )
 
-// PlcDevice is the golang structure for table hg_plc_device.
-type PlcDevice struct {
+// PlcMine is the golang structure for table hg_plc_mine.
+type PlcMine struct {
 	Id        int         `json:"id"        orm:"id"         description:"主键"`
-	MineId    int         `json:"mineId"    orm:"mine_id"    description:"所属矿场 ID"`
-	Name      string      `json:"name"      orm:"name"       description:"设备名称"`
-	Host      string      `json:"host"      orm:"host"       description:"DTU 设备编号 (MQTT topic)"`
+	Name      string      `json:"name"      orm:"name"       description:"矿场名称"`
+	Location  string      `json:"location"  orm:"location"   description:"地理位置"`
 	Remark    string      `json:"remark"    orm:"remark"     description:"备注"`
 	Status    int         `json:"status"    orm:"status"     description:"状态：1启用 2禁用"`
 	CreatedBy int64       `json:"createdBy" orm:"created_by" description:"创建者"`

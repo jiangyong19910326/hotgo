@@ -1,20 +1,16 @@
 -- ============================================================
 -- HotGo PLC 数据采集模块数据表迁移脚本 (MySQL)
 -- 适用版本: HotGo v2.x
--- 使用方式: 可直接在已有数据库中执行，使用 IF NOT EXISTS 安全幂等
+-- 协议: MQTT 订阅 (DTU 网关推送), Topic: /dtu/{deviceCode}/data
 -- ============================================================
 
 -- --------------------------------------------------------
--- 表结构 `hg_plc_device`  PLC 设备
+-- 表结构 `hg_plc_mine`  矿场
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `hg_plc_device` (
+CREATE TABLE IF NOT EXISTS `hg_plc_mine` (
   `id`          int(11)       NOT NULL AUTO_INCREMENT              COMMENT '主键',
-  `name`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT '设备名称',
-  `host`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT 'IP 地址',
-  `port`        int(11)       NOT NULL DEFAULT 102                 COMMENT 'TCP 端口（S7 默认 102）',
-  `rack`        tinyint(4)    NOT NULL DEFAULT 0                   COMMENT '机架号（Rack，通常为 0）',
-  `slot`        tinyint(4)    NOT NULL DEFAULT 1                   COMMENT '槽号（Slot，S7-200 SMART 为 1）',
-  `interval_ms` int(11)       NOT NULL DEFAULT 1000               COMMENT '采集间隔（毫秒）',
+  `name`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT '矿场名称',
+  `location`    varchar(128)  NOT NULL DEFAULT ''                  COMMENT '地理位置',
   `remark`      varchar(255)  NOT NULL DEFAULT ''                  COMMENT '备注',
   `status`      tinyint(1)    NOT NULL DEFAULT 1                   COMMENT '状态：1启用 2禁用',
   `created_by`  bigint(20)    NOT NULL DEFAULT 0                   COMMENT '创建者',
@@ -24,21 +20,40 @@ CREATE TABLE IF NOT EXISTS `hg_plc_device` (
   `deleted_at`  datetime      DEFAULT NULL                         COMMENT '删除时间',
   PRIMARY KEY (`id`),
   KEY `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC 设备';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='矿场';
+
+-- --------------------------------------------------------
+-- 表结构 `hg_plc_device`  PLC 设备 (MQTT)
+-- host 字段存 DTU 序列号, 与 MQTT Topic /dtu/{host}/data 对应
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `hg_plc_device` (
+  `id`          int(11)       NOT NULL AUTO_INCREMENT              COMMENT '主键',
+  `mine_id`     int(11)       NOT NULL DEFAULT 0                   COMMENT '所属矿场 ID',
+  `name`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT '设备名称',
+  `host`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT 'DTU 设备编号 (MQTT topic)',
+  `remark`      varchar(255)  NOT NULL DEFAULT ''                  COMMENT '备注',
+  `status`      tinyint(1)    NOT NULL DEFAULT 1                   COMMENT '状态：1启用 2禁用',
+  `created_by`  bigint(20)    NOT NULL DEFAULT 0                   COMMENT '创建者',
+  `updated_by`  bigint(20)    NOT NULL DEFAULT 0                   COMMENT '更新者',
+  `created_at`  datetime      DEFAULT NULL                         COMMENT '创建时间',
+  `updated_at`  datetime      DEFAULT NULL                         COMMENT '修改时间',
+  `deleted_at`  datetime      DEFAULT NULL                         COMMENT '删除时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_host` (`host`),
+  KEY `idx_status` (`status`),
+  KEY `idx_mine_id` (`mine_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC 设备 (MQTT)';
 
 -- --------------------------------------------------------
 -- 表结构 `hg_plc_point`  数据点定义
+-- field 字段直接对应 MQTT payload 中的 key (UPPER_SNAKE)
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `hg_plc_point` (
   `id`          int(11)       NOT NULL AUTO_INCREMENT              COMMENT '主键',
   `device_id`   int(11)       NOT NULL DEFAULT 0                   COMMENT '所属设备 ID',
   `name`        varchar(64)   NOT NULL DEFAULT ''                  COMMENT '点位名称（展示用）',
-  `field`       varchar(64)   NOT NULL DEFAULT ''                  COMMENT '字段标识（英文，前端使用）',
-  `area`        varchar(8)    NOT NULL DEFAULT 'DB'                COMMENT '存储区：DB/M/I/Q/V',
-  `db_number`   int(11)       NOT NULL DEFAULT 1                   COMMENT 'DB 块号（area=DB 时有效）',
-  `byte_offset` int(11)       NOT NULL DEFAULT 0                   COMMENT '字节偏移量',
-  `bit_offset`  tinyint(4)    NOT NULL DEFAULT 0                   COMMENT '位偏移量（数据类型为 Bool 时有效）',
-  `data_type`   varchar(16)   NOT NULL DEFAULT 'REAL'              COMMENT '数据类型：Bool/Int/DInt/Real/Word/DWord/Byte/String',
+  `field`       varchar(64)   NOT NULL DEFAULT ''                  COMMENT 'MQTT 字段名 (UPPER_SNAKE)',
+  `data_type`   varchar(16)   NOT NULL DEFAULT 'Real'              COMMENT '数据类型：Bool/Real',
   `scale`       double        NOT NULL DEFAULT 1                   COMMENT '换算系数（工程值 = 原始值 × scale + offset）',
   `offset_val`  double        NOT NULL DEFAULT 0                   COMMENT '换算偏移量',
   `unit`        varchar(16)   NOT NULL DEFAULT ''                  COMMENT '单位（如 ℃、bar、rpm）',
@@ -55,14 +70,14 @@ CREATE TABLE IF NOT EXISTS `hg_plc_point` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC 数据点定义';
 
 -- --------------------------------------------------------
--- 表结构 `hg_plc_record`  采集历史记录（按时间查询，建议按月分区或定期归档）
+-- 表结构 `hg_plc_record`  采集历史记录
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `hg_plc_record` (
   `id`          bigint(20)    NOT NULL AUTO_INCREMENT              COMMENT '主键',
   `device_id`   int(11)       NOT NULL DEFAULT 0                   COMMENT '设备 ID',
   `point_id`    int(11)       NOT NULL DEFAULT 0                   COMMENT '数据点 ID',
   `field`       varchar(64)   NOT NULL DEFAULT ''                  COMMENT '字段标识',
-  `raw_value`   varchar(64)   NOT NULL DEFAULT ''                  COMMENT '原始值（字符串存储，兼容各类型）',
+  `raw_value`   varchar(64)   NOT NULL DEFAULT ''                  COMMENT '原始值',
   `eng_value`   double        DEFAULT NULL                         COMMENT '工程值（换算后）',
   `collected_at` datetime     NOT NULL                             COMMENT '采集时间',
   PRIMARY KEY (`id`),
@@ -78,7 +93,7 @@ CREATE TABLE IF NOT EXISTS `hg_plc_alarm` (
   `device_id`   int(11)       NOT NULL DEFAULT 0                   COMMENT '设备 ID',
   `point_id`    int(11)       NOT NULL DEFAULT 0                   COMMENT '数据点 ID',
   `field`       varchar(64)   NOT NULL DEFAULT ''                  COMMENT '字段标识',
-  `point_name`  varchar(64)   NOT NULL DEFAULT ''                  COMMENT '点位名称（冗余，方便查询）',
+  `point_name`  varchar(64)   NOT NULL DEFAULT ''                  COMMENT '点位名称（冗余）',
   `eng_value`   double        NOT NULL DEFAULT 0                   COMMENT '触发时工程值',
   `alarm_type`  tinyint(1)    NOT NULL DEFAULT 1                   COMMENT '报警类型：1超上限 2超下限',
   `alarm_min`   double        DEFAULT NULL                         COMMENT '报警下限快照',

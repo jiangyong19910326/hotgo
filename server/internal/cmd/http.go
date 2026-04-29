@@ -14,6 +14,7 @@ import (
 	"hotgo/internal/library/addons"
 	"hotgo/internal/library/casbin"
 	"hotgo/internal/library/hggen"
+	"hotgo/internal/library/mqttx"
 	"hotgo/internal/router"
 	"hotgo/internal/service"
 	"hotgo/internal/websocket"
@@ -86,6 +87,9 @@ var (
 			// 注册支付成功回调方法
 			service.Pay().RegisterNotifyCall()
 
+			// 启动 MQTT 订阅 (DTU 数据接入)
+			mqttx.Start(ctx)
+
 			serverWg.Add(1)
 
 			// 信号监听
@@ -93,6 +97,7 @@ var (
 
 			go func() {
 				<-serverCloseSignal
+				mqttx.Stop()                  // 关闭MQTT订阅
 				websocket.Stop()              // 关闭websocket
 				service.TCPServer().Stop(ctx) // 关闭tcp服务器
 				addons.StopModules(ctx)       // 停止插件

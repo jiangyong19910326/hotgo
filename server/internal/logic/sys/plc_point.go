@@ -66,44 +66,36 @@ func (s *sPlcPoint) Edit(ctx context.Context, in *sysin.PlcPointEditInp) (err er
 
 	if in.Id > 0 {
 		_, err = s.Model(ctx).Where(dao.PlcPoint.Columns().Id, in.Id).Data(g.Map{
-			dao.PlcPoint.Columns().DeviceId:   in.DeviceId,
-			dao.PlcPoint.Columns().Name:       in.Name,
-			dao.PlcPoint.Columns().Field:      in.Field,
-			dao.PlcPoint.Columns().Area:       in.Area,
-			dao.PlcPoint.Columns().DbNumber:   in.DbNumber,
-			dao.PlcPoint.Columns().ByteOffset: in.ByteOffset,
-			dao.PlcPoint.Columns().BitOffset:  in.BitOffset,
-			dao.PlcPoint.Columns().DataType:   in.DataType,
-			dao.PlcPoint.Columns().Scale:      in.Scale,
-			dao.PlcPoint.Columns().OffsetVal:  in.OffsetVal,
-			dao.PlcPoint.Columns().Unit:       in.Unit,
-			dao.PlcPoint.Columns().AlarmMin:   in.AlarmMin,
-			dao.PlcPoint.Columns().AlarmMax:   in.AlarmMax,
-			dao.PlcPoint.Columns().Remark:     in.Remark,
-			dao.PlcPoint.Columns().Sort:       in.Sort,
-			dao.PlcPoint.Columns().Status:     in.Status,
-			dao.PlcPoint.Columns().UpdatedAt:  gtime.Now(),
+			dao.PlcPoint.Columns().DeviceId:  in.DeviceId,
+			dao.PlcPoint.Columns().Name:      in.Name,
+			dao.PlcPoint.Columns().Field:     in.Field,
+			dao.PlcPoint.Columns().DataType:  in.DataType,
+			dao.PlcPoint.Columns().Scale:     in.Scale,
+			dao.PlcPoint.Columns().OffsetVal: in.OffsetVal,
+			dao.PlcPoint.Columns().Unit:      in.Unit,
+			dao.PlcPoint.Columns().AlarmMin:  in.AlarmMin,
+			dao.PlcPoint.Columns().AlarmMax:  in.AlarmMax,
+			dao.PlcPoint.Columns().Remark:    in.Remark,
+			dao.PlcPoint.Columns().Sort:      in.Sort,
+			dao.PlcPoint.Columns().Status:    in.Status,
+			dao.PlcPoint.Columns().UpdatedAt: gtime.Now(),
 		}).Update()
 	} else {
 		_, err = s.Model(ctx).Data(&entity.PlcPoint{
-			DeviceId:   in.DeviceId,
-			Name:       in.Name,
-			Field:      in.Field,
-			Area:       in.Area,
-			DbNumber:   in.DbNumber,
-			ByteOffset: in.ByteOffset,
-			BitOffset:  in.BitOffset,
-			DataType:   in.DataType,
-			Scale:      in.Scale,
-			OffsetVal:  in.OffsetVal,
-			Unit:       in.Unit,
-			AlarmMin:   in.AlarmMin,
-			AlarmMax:   in.AlarmMax,
-			Remark:     in.Remark,
-			Sort:       in.Sort,
-			Status:     in.Status,
-			CreatedAt:  gtime.Now(),
-			UpdatedAt:  gtime.Now(),
+			DeviceId:  in.DeviceId,
+			Name:      in.Name,
+			Field:     in.Field,
+			DataType:  in.DataType,
+			Scale:     in.Scale,
+			OffsetVal: in.OffsetVal,
+			Unit:      in.Unit,
+			AlarmMin:  in.AlarmMin,
+			AlarmMax:  in.AlarmMax,
+			Remark:    in.Remark,
+			Sort:      in.Sort,
+			Status:    in.Status,
+			CreatedAt: gtime.Now(),
+			UpdatedAt: gtime.Now(),
 		}).Insert()
 	}
 	return
@@ -120,7 +112,7 @@ func (s *sPlcPoint) Status(ctx context.Context, in *sysin.PlcPointStatusInp) (er
 	return
 }
 
-// ActivePoints 获取指定设备的所有启用数据点（供 Cron 使用）
+// ActivePoints 获取指定设备的所有启用数据点（供 MQTT 订阅器使用）
 func (s *sPlcPoint) ActivePoints(ctx context.Context, deviceId int) (list []*entity.PlcPoint, err error) {
 	err = s.Model(ctx).
 		Where(dao.PlcPoint.Columns().DeviceId, deviceId).
@@ -128,4 +120,41 @@ func (s *sPlcPoint) ActivePoints(ctx context.Context, deviceId int) (list []*ent
 		OrderAsc(dao.PlcPoint.Columns().Sort).
 		Scan(&list)
 	return
+}
+
+// CreateByFields 按 MQTT payload 字段批量创建数据点（自动接入用）
+// 已存在 (device_id, field) 的会被 unique 索引拦截，跳过；返回最终全量列表。
+func (s *sPlcPoint) CreateByFields(ctx context.Context, deviceId int, items []service.PlcPointAuto) (list []*entity.PlcPoint, err error) {
+	if len(items) == 0 {
+		return s.ActivePoints(ctx, deviceId)
+	}
+	now := gtime.Now()
+	rows := make([]entity.PlcPoint, 0, len(items))
+	for i, it := range items {
+		dt := it.DataType
+		if dt == "" {
+			dt = "Real"
+		}
+		rows = append(rows, entity.PlcPoint{
+			DeviceId:  deviceId,
+			Name:      it.Field,
+			Field:     it.Field,
+			DataType:  dt,
+			Scale:     1,
+			OffsetVal: 0,
+			Remark:    "MQTT 自动创建",
+			Sort:      1000 + i,
+			Status:    1,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+	// 逐条插入，忽略 unique 冲突（并发时同字段可能被其他协程先建）
+	for _, r := range rows {
+		if _, insErr := s.Model(ctx).Data(r).Insert(); insErr != nil {
+			// 唯一键冲突跳过
+			continue
+		}
+	}
+	return s.ActivePoints(ctx, deviceId)
 }
