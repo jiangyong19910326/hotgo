@@ -3,6 +3,24 @@ package plc
 
 import "github.com/gogf/gf/v2/frame/g"
 
+// DevicesReq 当前可用设备列表
+type DevicesReq struct {
+	g.Meta `path:"/plc/devices" method:"get" tags:"PLC前台" summary:"获取当前启用中的设备列表"`
+}
+
+type DeviceItem struct {
+	Id     int    `json:"id"`
+	MineId int    `json:"mineId"`
+	Name   string `json:"name"`
+	Host   string `json:"host"`
+	Remark string `json:"remark"`
+	Status int    `json:"status"`
+}
+
+type DevicesRes struct {
+	List []*DeviceItem `json:"list"`
+}
+
 // OverviewReq 看板汇总: 设备 + 数据点 + 实时值
 type OverviewReq struct {
 	g.Meta   `path:"/plc/overview" method:"get" tags:"PLC前台" summary:"看板汇总(设备+数据点+实时值)"`
