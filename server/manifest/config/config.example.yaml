@@ -170,7 +170,9 @@ router:
     # 前缀
     prefix: "/api"
     # 不需要验证登录的路由地址
-    exceptLogin: [ ]
+    exceptLogin: [
+      "/frontUser/login",   # 前端用户账号登录
+    ]
   # websocket
   websocket:
     # 前缀

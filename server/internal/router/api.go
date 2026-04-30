@@ -8,6 +8,7 @@ package router
 import (
 	"context"
 	"hotgo/internal/consts"
+	"hotgo/internal/controller/api/frontuser"
 	"hotgo/internal/controller/api/member"
 	"hotgo/internal/controller/api/pay"
 	apiplc "hotgo/internal/controller/api/plc"
@@ -28,7 +29,8 @@ func Api(ctx context.Context, group *ghttp.RouterGroup) {
 		)
 		group.Middleware(service.Middleware().ApiAuth)
 		group.Bind(
-			member.NewV1(), // 管理员
+			member.NewV1(),    // 管理员
+			frontuser.NewV1(), // 前端用户（/frontUser/login 在 exceptLogin 中放行）
 		)
 	})
 }
