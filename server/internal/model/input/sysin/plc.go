@@ -320,3 +320,56 @@ type PlcAlarmResolveInp struct {
 	Id     int64  `json:"id"     v:"required#报警ID不能为空"`
 	Remark string `json:"remark" dc:"处理备注"`
 }
+
+// ─────────────────────────────────────────────────────────────
+// 图表数据（ECharts）
+// ─────────────────────────────────────────────────────────────
+
+// PlcChartSeries ECharts series 数据项（折线/柱状）
+type PlcChartSeries struct {
+	Name    string     `json:"name"`    // 序列名称（设备名 / 点位名）
+	Field   string     `json:"field"`   // 实际匹配的 PLC 字段名
+	PointId int        `json:"pointId"` // 点位 ID
+	Type    string     `json:"type"`    // ECharts series type
+	Data    []*float64 `json:"data"`    // 数据值列表，与 XAxis 一一对应，缺失为 null
+	Unit    string     `json:"unit"`    // 单位（前端 tooltip 用）
+}
+
+// PlcChartMeta 图表元信息
+type PlcChartMeta struct {
+	DeviceId   int    `json:"deviceId"`
+	StartTime  string `json:"startTime"`
+	EndTime    string `json:"endTime"`
+	Interval   string `json:"interval"`   // raw/1m/5m/1h/1d
+	PointCount int    `json:"pointCount"` // X轴点数
+	MaxPoints  int    `json:"maxPoints"`
+}
+
+// PlcChartModel ECharts 通用返回结构
+type PlcChartModel struct {
+	Meta   *PlcChartMeta     `json:"meta"`
+	Legend []string          `json:"legend"`
+	XAxis  []string          `json:"xAxis"`  // 时间轴标签
+	Series []*PlcChartSeries `json:"series"` // 每条折线
+}
+
+// PlcChartTemperatureInp 温度图表查询参数
+// 返回指定设备的「设备温度 / 回油温度 / 油箱温度」三条折线
+type PlcChartTemperatureInp struct {
+	DeviceId  int    `json:"deviceId"  v:"required#设备ID不能为空" dc:"设备ID"`
+	StartTime string `json:"startTime"                          dc:"开始时间，默认最近1小时"`
+	EndTime   string `json:"endTime"                            dc:"结束时间"`
+	// 三个点位的 Field 名，前端可覆盖；后端默认按约定名称查找
+	FieldTemp    string `json:"fieldTemp"    dc:"设备温度字段名，默认 DEVICE_TEMP"`
+	FieldOilBack string `json:"fieldOilBack" dc:"回油温度字段名，默认 OIL_BACK_TEMP"`
+	FieldOilTank string `json:"fieldOilTank" dc:"油箱温度字段名，默认 OIL_TANK_TEMP"`
+}
+
+// PlcChartCurrentInp 电流图表查询参数
+// 返回单台设备的电流折线
+type PlcChartCurrentInp struct {
+	DeviceId     int    `json:"deviceId"  v:"required#设备ID不能为空" dc:"设备ID"`
+	StartTime    string `json:"startTime"                          dc:"开始时间，默认最近1小时"`
+	EndTime      string `json:"endTime"                            dc:"结束时间"`
+	FieldCurrent string `json:"fieldCurrent"                       dc:"电流字段名，默认 CURRENT"`
+}

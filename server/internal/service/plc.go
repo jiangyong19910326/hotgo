@@ -85,6 +85,14 @@ type (
 		Status(ctx context.Context, in *sysin.PlcAppStatusInp) (err error)
 		GenSecret(ctx context.Context) (secret string)
 	}
+
+	// IPlcChart 图表数据（ECharts）
+	IPlcChart interface {
+		// Temperature 返回单台设备的温度折线图数据（设备温度/回油温度/油箱温度）
+		Temperature(ctx context.Context, in *sysin.PlcChartTemperatureInp) (res *sysin.PlcChartModel, err error)
+		// Current 返回多台设备的电流折线图数据
+		Current(ctx context.Context, in *sysin.PlcChartCurrentInp) (res *sysin.PlcChartModel, err error)
+	}
 )
 
 var (
@@ -95,6 +103,7 @@ var (
 	localPlcHistory  IPlcHistory
 	localPlcAlarm    IPlcAlarm
 	localPlcApp      IPlcApp
+	localPlcChart    IPlcChart
 )
 
 func PlcMine() IPlcMine {
@@ -159,3 +168,12 @@ func PlcApp() IPlcApp {
 }
 
 func RegisterPlcApp(i IPlcApp) { localPlcApp = i }
+
+func PlcChart() IPlcChart {
+	if localPlcChart == nil {
+		panic("implement not found for interface IPlcChart, forgot register?")
+	}
+	return localPlcChart
+}
+
+func RegisterPlcChart(i IPlcChart) { localPlcChart = i }

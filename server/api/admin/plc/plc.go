@@ -229,3 +229,4 @@ type AppGenSecretReq struct {
 type AppGenSecretRes struct {
 	AppSecret string `json:"appSecret"`
 }
+
