@@ -34,11 +34,8 @@ func RXml(r *ghttp.Request, code int, message string, data ...interface{}) {
 		TraceID:   gctx.CtxId(r.Context()),
 	}
 
-	// 如果不是正常的返回，则将data转为error
 	if gcode.CodeOK.Code() == code {
 		res.Data = responseData
-	} else {
-		res.Error = responseData
 	}
 
 	// 清空响应
@@ -64,11 +61,8 @@ func RJson(r *ghttp.Request, code int, message string, data ...interface{}) {
 		TraceID:   gctx.CtxId(r.Context()),
 	}
 
-	// 如果不是正常的返回，则将data转为error
 	if gcode.CodeOK.Code() == code {
 		res.Data = responseData
-	} else {
-		res.Error = responseData
 	}
 
 	// 清空响应

@@ -23,6 +23,9 @@ type (
 		ResetPwd(ctx context.Context, in *sysin.FrontUserResetPwdInp) (err error)
 		GetByUsername(ctx context.Context, username string) (user *entity.FrontUser, err error)
 		GetById(ctx context.Context, id int64) (user *entity.FrontUser, err error)
+		MineIds(ctx context.Context, userId int64) (ids []int, err error)
+		CanAccessDevice(ctx context.Context, userId int64, deviceId int) (ok bool, err error)
+		CanAccessPoint(ctx context.Context, userId int64, pointId int) (ok bool, err error)
 	}
 
 	// IFrontSite 前端站点（登录/资料/退出）

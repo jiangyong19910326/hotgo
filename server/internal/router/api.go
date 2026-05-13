@@ -25,10 +25,10 @@ func Api(ctx context.Context, group *ghttp.RouterGroup) {
 		group.Bind(
 			pay.NewV1(),       // 支付异步通知
 			shortlink.NewV1(), // 短链接
-			apiplc.NewV1(),    // PLC 前台接口（暂未启用签名验签）
 		)
 		group.Middleware(service.Middleware().ApiAuth)
 		group.Bind(
+			apiplc.NewV1(),    // PLC 前台接口（Bearer Token）
 			member.NewV1(),    // 管理员
 			frontuser.NewV1(), // 前端用户（/frontUser/login 在 exceptLogin 中放行）
 		)

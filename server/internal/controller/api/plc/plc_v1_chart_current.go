@@ -9,6 +9,9 @@ import (
 )
 
 func (c *ControllerV1) ChartCurrent(ctx context.Context, req *v1.ChartCurrentReq) (res *v1.ChartCurrentRes, err error) {
+	if err = ensureDeviceAccess(ctx, req.DeviceId); err != nil {
+		return nil, err
+	}
 	data, err := service.PlcChart().Current(ctx, &sysin.PlcChartCurrentInp{
 		DeviceId:     req.DeviceId,
 		StartTime:    req.StartTime,

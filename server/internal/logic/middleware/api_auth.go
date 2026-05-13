@@ -10,7 +10,9 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/text/gstr"
 	"hotgo/internal/consts"
+	"hotgo/internal/library/contexts"
 	"hotgo/internal/library/response"
+	"hotgo/internal/library/token"
 	"hotgo/utility/simple"
 )
 
@@ -27,11 +29,17 @@ func (s *sMiddleware) ApiAuth(r *ghttp.Request) {
 		return
 	}
 
-	// 将用户信息传递到上下文中
-	if err := s.DeliverUserContext(r); err != nil {
+	// /api 只接受前台用户 Token，不能走 AdminSite.BindUserContext，否则 admin token 会触发后台角色查询。
+	user, err := token.ParseLoginUser(r)
+	if err != nil {
 		response.JsonExit(r, gcode.CodeNotAuthorized.Code(), err.Error())
 		return
 	}
+	if user == nil || user.App != consts.AppApi {
+		response.JsonExit(r, gcode.CodeNotAuthorized.Code(), "请使用前台用户Token访问")
+		return
+	}
+	contexts.SetUser(r.Context(), user)
 
 	// 验证路由访问权限
 	// ...

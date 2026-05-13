@@ -30,6 +30,8 @@ type FrontUserListModel struct {
 	LastLoginAt *gtime.Time `json:"lastLoginAt"`
 	LastLoginIp string      `json:"lastLoginIp"`
 	CreatedAt   *gtime.Time `json:"createdAt"`
+	MineIds     []int       `json:"mineIds"`
+	MineNames   []string    `json:"mineNames"`
 }
 
 type FrontUserViewInp struct {
@@ -48,6 +50,7 @@ type FrontUserEditInp struct {
 	Email    string `json:"email"                             dc:"邮箱"`
 	Remark   string `json:"remark"                            dc:"备注"`
 	Status   int    `json:"status"                            dc:"状态"`
+	MineIds  []int  `json:"mineIds"                           dc:"绑定矿场ID列表"`
 }
 
 type FrontUserDeleteInp struct {

@@ -12,6 +12,8 @@ import (
 	"github.com/gogf/gf/v2/os/gtime"
 )
 
+const plcRecordRetentionMonths = -3
+
 type sPlcHistory struct{}
 
 func NewPlcHistory() *sPlcHistory { return &sPlcHistory{} }
@@ -54,5 +56,24 @@ func (s *sPlcHistory) BatchInsert(ctx context.Context, records []*entity.PlcReco
 		r.CollectedAt = now
 	}
 	_, err := dao.PlcRecord.Ctx(ctx).Data(records).Insert()
+	if err != nil {
+		return err
+	}
+	return s.CleanupExpired(ctx)
+}
+
+// CleanupExpired 清理三个月前的历史记录；仅清理三个月内仍有新数据的点位。
+func (s *sPlcHistory) CleanupExpired(ctx context.Context) error {
+	cutoff := gtime.Now().AddDate(0, plcRecordRetentionMonths, 0).Format("Y-m-d H:i:s")
+	sql := `
+DELETE r FROM hg_plc_record r
+INNER JOIN (
+  SELECT point_id
+  FROM hg_plc_record
+  GROUP BY point_id
+  HAVING MAX(collected_at) >= ?
+) active_points ON active_points.point_id = r.point_id
+WHERE r.collected_at < ?`
+	_, err := dao.PlcRecord.DB().Exec(ctx, sql, cutoff, cutoff)
 	return err
 }

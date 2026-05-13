@@ -54,7 +54,7 @@ func FilterAuthWithField(filterField string) func(m *gdb.Model) *gdb.Model {
 			co   = contexts.Get(ctx)
 		)
 
-		if co == nil || co.User == nil {
+		if co == nil || co.User == nil || co.User.App != consts.AppAdmin {
 			return m
 		}
 

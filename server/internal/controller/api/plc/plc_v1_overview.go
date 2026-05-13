@@ -9,6 +9,9 @@ import (
 )
 
 func (c *ControllerV1) Overview(ctx context.Context, req *v1.OverviewReq) (res *v1.OverviewRes, err error) {
+	if err = ensureDeviceAccess(ctx, req.DeviceId); err != nil {
+		return nil, err
+	}
 	data, err := service.PlcRealtime().Overview(ctx, &sysin.PlcOverviewInp{DeviceId: req.DeviceId})
 	if err != nil {
 		return nil, err

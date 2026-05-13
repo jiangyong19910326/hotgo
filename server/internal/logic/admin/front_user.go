@@ -54,6 +54,9 @@ func (s *sFrontUser) List(ctx context.Context, in *sysin.FrontUserListInp) (list
 	err = mod.Page(in.Page, in.PerPage).
 		OrderDesc(cols.Id).
 		Scan(&list)
+	if err == nil {
+		err = s.fillMineInfo(ctx, list)
+	}
 	return
 }
 
@@ -61,6 +64,14 @@ func (s *sFrontUser) List(ctx context.Context, in *sysin.FrontUserListInp) (list
 func (s *sFrontUser) View(ctx context.Context, in *sysin.FrontUserViewInp) (res *sysin.FrontUserViewModel, err error) {
 	res = new(sysin.FrontUserViewModel)
 	err = s.Model(ctx).WherePri(in.Id).Scan(res)
+	if err == nil && res != nil && res.Id > 0 {
+		ids, e := s.MineIds(ctx, res.Id)
+		if e != nil {
+			return nil, e
+		}
+		res.MineIds = ids
+		res.MineNames, err = s.mineNames(ctx, ids)
+	}
 	return
 }
 
@@ -78,8 +89,9 @@ func (s *sFrontUser) Edit(ctx context.Context, in *sysin.FrontUserEditInp) (err 
 
 	cols := dao.FrontUser.Columns()
 
-	// 编辑
-	if in.Id > 0 {
+	return g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		// 编辑
+		if in.Id > 0 {
 		exist, e := s.Model(ctx).Where(cols.Username, in.Username).WhereNot(cols.Id, in.Id).Count()
 		if e != nil {
 			return gerror.Wrap(e, "校验用户名失败")
@@ -112,24 +124,26 @@ func (s *sFrontUser) Edit(ctx context.Context, in *sysin.FrontUserEditInp) (err 
 			data[cols.PasswordHash] = gmd5.MustEncryptString(in.Password + salt.String())
 		}
 
-		_, err = s.Model(ctx).WherePri(in.Id).Data(data).Update()
-		return
-	}
+		if _, err = s.Model(ctx).WherePri(in.Id).Data(data).Update(); err != nil {
+			return err
+		}
+		return s.saveMineIds(ctx, in.Id, in.MineIds)
+		}
 
-	// 新增
-	if in.Password == "" {
-		return gerror.New("新增用户密码不能为空")
-	}
-	exist, err := s.Model(ctx).Where(cols.Username, in.Username).Count()
-	if err != nil {
-		return gerror.Wrap(err, "校验用户名失败")
-	}
-	if exist > 0 {
-		return gerror.New("用户名已存在")
-	}
+		// 新增
+		if in.Password == "" {
+			return gerror.New("新增用户密码不能为空")
+		}
+		exist, e := s.Model(ctx).Where(cols.Username, in.Username).Count()
+		if e != nil {
+			return gerror.Wrap(e, "校验用户名失败")
+		}
+		if exist > 0 {
+			return gerror.New("用户名已存在")
+		}
 
-	salt := grand.S(6)
-	row := &entity.FrontUser{
+		salt := grand.S(6)
+		row := &entity.FrontUser{
 		Username:     in.Username,
 		Nickname:     in.Nickname,
 		PasswordHash: gmd5.MustEncryptString(in.Password + salt),
@@ -144,8 +158,16 @@ func (s *sFrontUser) Edit(ctx context.Context, in *sysin.FrontUserEditInp) (err 
 		CreatedAt:    gtime.Now(),
 		UpdatedAt:    gtime.Now(),
 	}
-	_, err = s.Model(ctx).Data(row).Insert()
-	return
+		result, e := s.Model(ctx).Data(row).Insert()
+		if e != nil {
+			return e
+		}
+		id, e := result.LastInsertId()
+		if e != nil {
+			return e
+		}
+		return s.saveMineIds(ctx, id, in.MineIds)
+	})
 }
 
 // Delete 删除前端用户（软删）
@@ -203,4 +225,120 @@ func (s *sFrontUser) GetById(ctx context.Context, id int64) (user *entity.FrontU
 		return nil, nil
 	}
 	return
+}
+
+// MineIds 获取前端用户绑定的矿场 ID 列表。
+func (s *sFrontUser) MineIds(ctx context.Context, userId int64) (ids []int, err error) {
+	var rows []struct {
+		MineId int `orm:"mine_id"`
+	}
+	err = dao.FrontUserMine.Ctx(ctx).
+		Fields(dao.FrontUserMine.Columns().MineId).
+		Where(dao.FrontUserMine.Columns().UserId, userId).
+		OrderAsc(dao.FrontUserMine.Columns().MineId).
+		Scan(&rows)
+	if err != nil {
+		return nil, err
+	}
+	ids = make([]int, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.MineId)
+	}
+	return
+}
+
+func (s *sFrontUser) saveMineIds(ctx context.Context, userId int64, mineIds []int) (err error) {
+	cols := dao.FrontUserMine.Columns()
+	if _, err = dao.FrontUserMine.Ctx(ctx).Where(cols.UserId, userId).Delete(); err != nil {
+		return err
+	}
+	if len(mineIds) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(mineIds))
+	rows := make([]*entity.FrontUserMine, 0, len(mineIds))
+	for _, mineId := range mineIds {
+		if mineId <= 0 {
+			continue
+		}
+		if _, ok := seen[mineId]; ok {
+			continue
+		}
+		seen[mineId] = struct{}{}
+		rows = append(rows, &entity.FrontUserMine{UserId: userId, MineId: mineId, CreatedAt: gtime.Now()})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err = dao.FrontUserMine.Ctx(ctx).Data(rows).Insert()
+	return err
+}
+
+func (s *sFrontUser) fillMineInfo(ctx context.Context, list []*sysin.FrontUserListModel) error {
+	for _, item := range list {
+		ids, err := s.MineIds(ctx, item.Id)
+		if err != nil {
+			return err
+		}
+		item.MineIds = ids
+		item.MineNames, err = s.mineNames(ctx, ids)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *sFrontUser) mineNames(ctx context.Context, mineIds []int) (names []string, err error) {
+	if len(mineIds) == 0 {
+		return []string{}, nil
+	}
+	var rows []struct {
+		Name string `orm:"name"`
+	}
+	err = dao.PlcMine.Ctx(ctx).
+		Fields(dao.PlcMine.Columns().Name).
+		WhereIn(dao.PlcMine.Columns().Id, mineIds).
+		OrderAsc(dao.PlcMine.Columns().Id).
+		Scan(&rows)
+	if err != nil {
+		return nil, err
+	}
+	names = make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Name)
+	}
+	return
+}
+
+// CanAccessDevice 校验前端用户是否可访问设备。
+func (s *sFrontUser) CanAccessDevice(ctx context.Context, userId int64, deviceId int) (ok bool, err error) {
+	if userId <= 0 || deviceId <= 0 {
+		return false, nil
+	}
+	count, err := dao.PlcDevice.Ctx(ctx).As("d").
+		InnerJoin(dao.FrontUserMine.Table()+" fum", "fum.mine_id = d.mine_id").
+		Where("fum.user_id", userId).
+		Where("d.id", deviceId).
+		Where("d.status", consts.StatusEnabled).
+		WhereNull("d.deleted_at").
+		Count()
+	return count > 0, err
+}
+
+// CanAccessPoint 校验前端用户是否可访问点位。
+func (s *sFrontUser) CanAccessPoint(ctx context.Context, userId int64, pointId int) (ok bool, err error) {
+	if userId <= 0 || pointId <= 0 {
+		return false, nil
+	}
+	count, err := dao.PlcPoint.Ctx(ctx).As("p").
+		InnerJoin(dao.PlcDevice.Table()+" d", "d.id = p.device_id").
+		InnerJoin(dao.FrontUserMine.Table()+" fum", "fum.mine_id = d.mine_id").
+		Where("fum.user_id", userId).
+		Where("p.id", pointId).
+		Where("p.status", consts.StatusEnabled).
+		Where("d.status", consts.StatusEnabled).
+		WhereNull("d.deleted_at").
+		Count()
+	return count > 0, err
 }

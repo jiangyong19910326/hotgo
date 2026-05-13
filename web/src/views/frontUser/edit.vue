@@ -47,6 +47,16 @@
               <n-radio :value="2">禁用</n-radio>
             </n-radio-group>
           </n-form-item>
+          <n-form-item label="绑定矿场">
+            <n-select
+              v-model:value="formValue.mineIds"
+              :options="mineOptions"
+              multiple
+              filterable
+              clearable
+              placeholder="请选择该前台用户可访问的矿场"
+            />
+          </n-form-item>
           <n-form-item label="备注">
             <n-input v-model:value="formValue.remark" type="textarea" :rows="2" />
           </n-form-item>
@@ -63,15 +73,22 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref, computed } from 'vue';
+  import { ref, computed, onMounted } from 'vue';
   import { useMessage } from 'naive-ui';
   import { FrontUserEdit } from '@/api/frontUser';
+  import { MineOptions } from '@/api/plc';
 
   const emit = defineEmits(['reloadTable']);
   const message = useMessage();
   const formRef = ref();
   const showModal = ref(false);
   const loading = ref(false);
+  const mineOptions = ref<{ label: string; value: number }[]>([]);
+
+  onMounted(async () => {
+    const res = await MineOptions();
+    mineOptions.value = (res?.list ?? []).map((m: any) => ({ label: m.name, value: m.id }));
+  });
 
   const defaultForm = () => ({
     id: 0,
@@ -83,6 +100,7 @@
     avatar: '',
     remark: '',
     status: 1,
+    mineIds: [] as number[],
   });
 
   const formValue = ref(defaultForm());

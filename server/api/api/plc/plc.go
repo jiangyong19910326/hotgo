@@ -21,6 +21,24 @@ type DevicesRes struct {
 	List []*DeviceItem `json:"list"`
 }
 
+// MinesReq 当前登录用户绑定的矿场及设备列表
+type MinesReq struct {
+	g.Meta `path:"/plc/mines" method:"get" tags:"PLC前台" summary:"获取当前用户绑定的矿场及设备列表"`
+}
+
+type MineItem struct {
+	Id       int           `json:"id"`
+	Name     string        `json:"name"`
+	Location string        `json:"location"`
+	Remark   string        `json:"remark"`
+	Status   int           `json:"status"`
+	Devices  []*DeviceItem `json:"devices"`
+}
+
+type MinesRes struct {
+	List []*MineItem `json:"list"`
+}
+
 // OverviewReq 看板汇总: 设备 + 数据点 + 实时值
 type OverviewReq struct {
 	g.Meta   `path:"/plc/overview" method:"get" tags:"PLC前台" summary:"看板汇总(设备+数据点+实时值)"`
@@ -60,27 +78,29 @@ type OverviewRes struct {
 // HistoryReq 单点位历史数据 (画图用)
 type HistoryReq struct {
 	g.Meta    `path:"/plc/history" method:"get" tags:"PLC前台" summary:"数据点历史值(画图)"`
+	DeviceId  int    `p:"deviceId"  v:"required|min:1#设备ID不能为空" dc:"设备ID"`
 	PointId   int    `p:"pointId"  v:"required|min:1#点位ID不能为空" dc:"点位ID"`
 	StartTime string `p:"startTime" dc:"开始时间, 格式 2006-01-02 15:04:05, 为空默认 endTime-1h"`
 	EndTime   string `p:"endTime"   dc:"结束时间, 为空默认现在"`
-	Limit     int    `p:"limit"     d:"500" dc:"返回点数上限, 默认500, 最大5000"`
+	Limit     int    `p:"limit"     d:"100" dc:"返回点数上限, 默认100, 最大5000"`
 }
 
 type HistoryPointInfo struct {
-	PointId int    `json:"pointId"`
-	Field   string `json:"field"`
-	Name    string `json:"name"`
-	Unit    string `json:"unit"`
+	PointId  int    `json:"pointId"`
+	DeviceId int    `json:"deviceId"`
+	Field    string `json:"field"`
+	Name     string `json:"name"`
+	Unit     string `json:"unit"`
 }
 
 type HistoryItem struct {
-	Time     string   `json:"time"`               // 采集时间 2006-01-02 15:04:05
-	EngValue *float64 `json:"engValue"`           // 工程值
+	Time     string   `json:"time"`     // 采集时间 2006-01-02 15:04:05
+	EngValue *float64 `json:"engValue"` // 工程值
 }
 
 type HistoryRes struct {
 	Point *HistoryPointInfo `json:"point"`
-	List  []*HistoryItem    `json:"list"`           // 升序按时间
+	List  []*HistoryItem    `json:"list"` // 升序按时间
 }
 
 // ─────────────────────────────────────────────────────────────

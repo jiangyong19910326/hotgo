@@ -9,6 +9,9 @@ import (
 )
 
 func (c *ControllerV1) ChartTemperature(ctx context.Context, req *v1.ChartTemperatureReq) (res *v1.ChartTemperatureRes, err error) {
+	if err = ensureDeviceAccess(ctx, req.DeviceId); err != nil {
+		return nil, err
+	}
 	data, err := service.PlcChart().Temperature(ctx, &sysin.PlcChartTemperatureInp{
 		DeviceId:     req.DeviceId,
 		StartTime:    req.StartTime,
