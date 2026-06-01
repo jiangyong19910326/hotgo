@@ -237,26 +237,26 @@
 
   const warehouseStats = computed(() => [
     {
-      label: 'DATA NODES',
+      label: '采集点位',
       value: points.value.length || '--',
       desc: '采集点位',
       tone: 'tone-cyan',
     },
     {
-      label: 'RUN STATE',
+      label: '运行状态',
       value: runState.value,
       desc: device.value?.name || '未选择设备',
       tone: runState.value === '运行' ? 'tone-green' : 'tone-amber',
     },
     {
-      label: 'ALARM BUS',
+      label: '报警通道',
       value: activeAlarmCount.value,
       desc: `共 ${allAlarms.value.length} 路`,
       tone: activeAlarmCount.value > 0 ? 'tone-red' : 'tone-cyan',
     },
     {
-      label: 'SYNC CLOCK',
-      value: autoRefresh.value ? '3s' : 'OFF',
+      label: '刷新频率',
+      value: autoRefresh.value ? `${overviewRefreshMs / 1000}s` : '关闭',
       desc: '实时刷新',
       tone: 'tone-blue',
     },
@@ -541,20 +541,20 @@
           axisLine: {
             lineStyle: {
               width: 10,
-              color: [[1, 'rgba(45, 70, 88, 0.28)']],
+              color: [[1, 'rgba(77, 229, 255, 0.16)']],
             },
           },
           axisTick: {
             distance: -16,
             length: 4,
-            lineStyle: { color: 'rgba(150, 204, 225, 0.58)', width: 1 },
+            lineStyle: { color: 'rgba(215, 247, 255, 0.72)', width: 1 },
           },
           splitLine: {
             distance: -18,
             length: 10,
-            lineStyle: { color: 'rgba(189, 229, 244, 0.78)', width: 1.4 },
+            lineStyle: { color: 'rgba(77, 229, 255, 0.86)', width: 1.4 },
           },
-          axisLabel: { color: 'rgba(108, 133, 150, 0.9)', distance: 8, fontSize: 9 },
+          axisLabel: { color: 'rgba(215, 247, 255, 0.78)', distance: 8, fontSize: 9 },
           pointer: {
             icon: 'path://M-3,0 L0,-62 L3,0 Z',
             length: '58%',
@@ -578,7 +578,7 @@
           },
           title: {
             show: true,
-            color: '#395467',
+            color: 'rgba(215, 247, 255, 0.86)',
             fontSize: 12,
             fontWeight: 700,
             offsetCenter: [0, '72%'],
@@ -586,10 +586,12 @@
           detail: {
             valueAnimation: true,
             formatter: `{value}${unit}`,
-            color: '#102a3c',
-            fontSize: 18,
+            color: '#eaffff',
+            fontSize: 20,
             offsetCenter: [0, '42%'],
             fontWeight: 700,
+            textShadowColor: color,
+            textShadowBlur: 12,
           },
           data: [{ value: Number(safeValue.toFixed(2)), name }],
         },
@@ -1797,6 +1799,13 @@
     box-shadow:
       inset 0 0 42px rgba(77, 229, 255, 0.08),
       0 12px 26px rgba(0, 0, 0, 0.24);
+  }
+  .gauge::before {
+    border-color: rgba(77, 229, 255, 0.32);
+    background: radial-gradient(circle, rgba(4, 13, 21, 0.08), rgba(4, 13, 21, 0.34) 64%);
+  }
+  .gauge::after {
+    background: linear-gradient(90deg, transparent, rgba(77, 229, 255, 0.9), transparent);
   }
   .param-table .param-row,
   .status-row,
