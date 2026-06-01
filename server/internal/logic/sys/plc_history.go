@@ -53,7 +53,9 @@ func (s *sPlcHistory) BatchInsert(ctx context.Context, records []*entity.PlcReco
 	}
 	now := gtime.Now()
 	for _, r := range records {
-		r.CollectedAt = now
+		if r.CollectedAt == nil {
+			r.CollectedAt = now
+		}
 	}
 	_, err := dao.PlcRecord.Ctx(ctx).Data(records).Insert()
 	if err != nil {

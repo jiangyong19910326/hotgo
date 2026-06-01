@@ -188,6 +188,8 @@
   import * as echarts from 'echarts';
   import { MineOptions, DeviceList, Overview } from '@/api/plc';
   import { http } from '@/utils/http/axios';
+  import { SocketEnum } from '@/enums/socketEnum';
+  import { addOnMessage, removeOnMessage, WebSocketMessage } from '@/utils/websocket';
   import monitorBg from '@/assets/images/plc-realtime-bg.png';
 
   const mineId = ref<number | null>(null);
@@ -205,7 +207,7 @@
   let refreshTimer: any = null;
   let chartTimer: any = null;
   const autoRefresh = ref(true);
-  const overviewRefreshMs = 10 * 1000;
+  const overviewRefreshMs = 60 * 1000;
   const chartRefreshMs = 60 * 1000;
   const realtimeStaleMs = 2 * 60 * 1000;
 
@@ -255,9 +257,9 @@
       tone: activeAlarmCount.value > 0 ? 'tone-red' : 'tone-cyan',
     },
     {
-      label: '刷新频率',
+      label: '兜底轮询',
       value: autoRefresh.value ? `${overviewRefreshMs / 1000}s` : '关闭',
-      desc: '实时刷新',
+      desc: 'WebSocket 实时',
       tone: 'tone-blue',
     },
   ]);
@@ -723,6 +725,7 @@
   onMounted(async () => {
     await loadMines();
     startClock();
+    addOnMessage(SocketEnum.EventPlcRealtime, onPlcRealtimeMessage);
     if (autoRefresh.value) {
       refreshTimer = setInterval(() => loadOverview(false), overviewRefreshMs);
       chartTimer = setInterval(() => {
@@ -795,6 +798,56 @@
     }
   }
 
+  function onPlcRealtimeMessage(message: WebSocketMessage) {
+    const data = message?.data || {};
+    if (!deviceId.value || Number(data.deviceId) !== Number(deviceId.value)) return;
+    mergeRealtimePoints(data.points || []);
+    refreshGauges();
+  }
+
+  function mergeRealtimePoints(realtimePoints: any[]) {
+    if (!Array.isArray(realtimePoints) || realtimePoints.length === 0) return;
+    const map = new Map([...points.value, ...allAlarms.value].map((p: any) => [p.field, { ...p }]));
+    for (const item of realtimePoints) {
+      const old = map.get(item.field) || {};
+      const next = {
+        ...old,
+        ...item,
+        dataType: old.dataType || item.dataType,
+        scale: old.scale,
+        offsetVal: old.offsetVal,
+        sort: old.sort ?? item.sort ?? 0,
+      };
+      if (
+        String(next.field || '')
+          .toUpperCase()
+          .startsWith('AL_')
+      ) {
+        next.active = Number(next.engValue || 0) !== 0;
+        next.stateText = next.active ? '报警' : '正常';
+      } else if (next.dataType === 'Bool') {
+        next.active = Number(next.engValue || 0) !== 0;
+        next.stateText = next.active ? '运行' : '停止';
+      }
+      map.set(item.field, next);
+    }
+    const nextPoints: any[] = [];
+    const nextAlarms: any[] = [];
+    for (const p of map.values()) {
+      if (
+        String(p.field || '')
+          .toUpperCase()
+          .startsWith('AL_')
+      ) {
+        nextAlarms.push(p);
+      } else {
+        nextPoints.push(p);
+      }
+    }
+    points.value = nextPoints.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+    allAlarms.value = nextAlarms.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+  }
+
   function formatValue(v: any) {
     if (v == null) return '—';
     const n = Number(v);
@@ -826,6 +879,7 @@
   );
 
   onUnmounted(() => {
+    removeOnMessage(SocketEnum.EventPlcRealtime);
     if (clockTimer) clearInterval(clockTimer);
     if (refreshTimer) clearInterval(refreshTimer);
     if (chartTimer) clearInterval(chartTimer);

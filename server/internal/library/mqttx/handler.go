@@ -11,10 +11,15 @@ import (
 	"hotgo/internal/model/entity"
 	"hotgo/internal/model/input/sysin"
 	"hotgo/internal/service"
+	"hotgo/internal/websocket"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gtime"
 )
+
+const websocketEventPlcRealtime = "plc/realtime"
 
 // payloadItem MQTT 单字段载荷
 type payloadItem struct {
@@ -64,15 +69,23 @@ func onMessage(_ mqtt.Client, msg mqtt.Message) {
 
 	records, items, alarms := buildResults(dev, points, payload)
 
+	collectedAt := gtime.Now()
 	if len(records) > 0 {
+		for _, r := range records {
+			r.CollectedAt = collectedAt
+		}
 		if insErr := service.PlcHistory().BatchInsert(ctx, records); insErr != nil {
 			g.Log().Warningf(ctx, "mqttx: BatchInsert err: %v", insErr)
 		}
 	}
 	if len(items) > 0 {
+		for _, item := range items {
+			item.CollectedAt = collectedAt
+		}
 		if rtErr := service.PlcRealtime().Set(ctx, dev.Id, items); rtErr != nil {
 			g.Log().Warningf(ctx, "mqttx: Realtime.Set err: %v", rtErr)
 		}
+		pushRealtime(dev.Id, items)
 		// 把全部 items 交给报警服务，由它根据 alarmType + AL_ 字段决定新增/自动恢复。
 		all := make([]sysin.PlcRealtimeItem, 0, len(items))
 		for _, it := range items {
@@ -83,6 +96,18 @@ func onMessage(_ mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	_ = alarms
+}
+
+func pushRealtime(deviceId int, items []*sysin.PlcRealtimeItem) {
+	websocket.SendToAll(&websocket.WResponse{
+		Event: websocketEventPlcRealtime,
+		Code:  gcode.CodeOK.Code(),
+		Data: g.Map{
+			"deviceId": deviceId,
+			"points":   items,
+		},
+		Timestamp: gtime.Now().Unix(),
+	})
 }
 
 // extractDeviceCode 从 topic /dtu/{code}/data 取 code

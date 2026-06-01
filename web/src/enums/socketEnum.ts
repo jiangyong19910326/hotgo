@@ -6,6 +6,7 @@ export enum SocketEnum {
   EventAdminMonitorTrends = 'admin/monitor/trends',
   EventAdminMonitorRunInfo = 'admin/monitor/runInfo',
   EventAdminOrderNotify = 'admin/order/notify',
+  EventPlcRealtime = 'plc/realtime',
   HeartBeatInterval = 1000,
   CodeSuc = 0,
   CodeErr = -1,
