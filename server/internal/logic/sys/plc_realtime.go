@@ -121,10 +121,10 @@ func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (
 		rtMap[p.Field] = p
 	}
 
-	// 收集缓存miss的pointId, 一次批量从record表取最新
+	// 收集缓存miss或缺采集时间的pointId, 一次批量从record表取最新
 	var missIds []int
 	for _, p := range points {
-		if _, ok := rtMap[p.Field]; !ok {
+		if r, ok := rtMap[p.Field]; !ok || r.CollectedAt == nil {
 			missIds = append(missIds, p.Id)
 		}
 	}
@@ -181,6 +181,11 @@ func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (
 			op.EngValue = &v
 			op.AlarmType = r.AlarmType
 			op.CollectedAt = r.CollectedAt
+			if op.CollectedAt == nil {
+				if fallback, ok := dbFallback[p.Id]; ok {
+					op.CollectedAt = fallback.CollectedAt
+				}
+			}
 		} else if v, ok := dbFallback[p.Id]; ok {
 			vv := v.EngValue
 			op.EngValue = &vv

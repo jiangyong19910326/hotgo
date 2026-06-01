@@ -203,7 +203,10 @@
   const clock = ref('');
   let clockTimer: any = null;
   let refreshTimer: any = null;
+  let chartTimer: any = null;
   const autoRefresh = ref(true);
+  const overviewRefreshMs = 10 * 1000;
+  const chartRefreshMs = 60 * 1000;
   const realtimeStaleMs = 2 * 60 * 1000;
 
   // 计算
@@ -278,7 +281,7 @@
 
   function isFreshPoint(p: any) {
     if (!hasPointValue(p)) return false;
-    if (!p.collectedAt) return true;
+    if (!p.collectedAt) return false;
     const time = new Date(p.collectedAt).getTime();
     return Number.isFinite(time) && Date.now() - time <= realtimeStaleMs;
   }
@@ -719,7 +722,10 @@
     await loadMines();
     startClock();
     if (autoRefresh.value) {
-      refreshTimer = setInterval(() => loadOverview(false), 3000);
+      refreshTimer = setInterval(() => loadOverview(false), overviewRefreshMs);
+      chartTimer = setInterval(() => {
+        if (deviceId.value) loadCharts(deviceId.value);
+      }, chartRefreshMs);
     }
   });
 
@@ -782,9 +788,6 @@
         ensureCharts();
       }
       refreshGauges();
-      if (!rebuild) {
-        await loadCharts(deviceId.value);
-      }
     } finally {
       loading.value = false;
     }
@@ -823,6 +826,7 @@
   onUnmounted(() => {
     if (clockTimer) clearInterval(clockTimer);
     if (refreshTimer) clearInterval(refreshTimer);
+    if (chartTimer) clearInterval(chartTimer);
     voltageGauge?.dispose();
     currentGauge?.dispose();
     tempChart?.dispose();
