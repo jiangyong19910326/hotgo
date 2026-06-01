@@ -11,9 +11,33 @@ export interface WebSocketMessage {
   timestamp: number;
 }
 
+type WebSocketMessageHandler = (message: WebSocketMessage) => void;
+
 let socket: WebSocket;
 let isActive: boolean;
-const messageHandler: Map<string, Function> = new Map();
+const messageHandler: Map<string, WebSocketMessageHandler> = new Map();
+
+function normalizeWsAddr(wsAddr = '') {
+  if (!wsAddr) return '';
+  try {
+    const url = new URL(wsAddr);
+    const pageHost = window.location.hostname;
+    const wsHost = url.hostname;
+    const isPageLocal = ['localhost', '127.0.0.1', '::1'].includes(pageHost);
+    const isWsLocal = ['localhost', '127.0.0.1', '::1'].includes(wsHost);
+    if (isWsLocal && !isPageLocal) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}${url.pathname}`;
+    }
+    if (window.location.protocol === 'https:' && url.protocol === 'ws:') {
+      url.protocol = 'wss:';
+      return url.toString().replace(/\/$/, '');
+    }
+    return wsAddr;
+  } catch {
+    return wsAddr;
+  }
+}
 
 export default () => {
   const heartCheck = {
@@ -55,7 +79,8 @@ export default () => {
       return;
     }
     try {
-      socket = new WebSocket(`${useUserStore.config?.wsAddr}?authorization=${useUserStore.token}`);
+      const wsAddr = normalizeWsAddr(useUserStore.config?.wsAddr);
+      socket = new WebSocket(`${wsAddr}?authorization=${useUserStore.token}`);
       init();
       if (lockReconnect) {
         lockReconnect = false;
@@ -131,7 +156,7 @@ export default () => {
 
 function onMessage(message: WebSocketMessage) {
   let handled = false;
-  messageHandler.forEach((value: Function, key: string) => {
+  messageHandler.forEach((value: WebSocketMessageHandler, key: string) => {
     if (message.event === key || key === '*') {
       handled = true;
       value.call(null, message);
@@ -173,7 +198,7 @@ export function sendMsg(event: string, data: any = null, isRetry = true) {
 }
 
 // 添加消息处理
-export function addOnMessage(key: string, value: Function): void {
+export function addOnMessage(key: string, value: WebSocketMessageHandler): void {
   messageHandler.set(key, value);
 }
 
@@ -183,6 +208,6 @@ export function removeOnMessage(key: string): boolean {
 }
 
 // 查看所有消息处理
-export function getAllOnMessage(): Map<string, Function> {
+export function getAllOnMessage(): Map<string, WebSocketMessageHandler> {
   return messageHandler;
 }

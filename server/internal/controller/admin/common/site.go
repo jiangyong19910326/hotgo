@@ -45,22 +45,24 @@ func (c *cSite) Config(ctx context.Context, _ *common.SiteConfigReq) (res *commo
 }
 
 func (c *cSite) getWsAddr(ctx context.Context, request *ghttp.Request) string {
-	// 如果是本地IP访问，则认为是调试模式，走实际请求地址，否则走配置中的地址
-	// 尝试读取hostname，兼容本地运行模式
-	ip := ghttp.RequestFromCtx(ctx).GetHeader("hostname")
-	if len(ip) == 0 {
-		ip = ghttp.RequestFromCtx(ctx).GetHost()
-	}
-
-	if validate.IsLocalIPAddr(ip) {
-		return "ws://" + ip + ":" + gstr.StrEx(request.Host, ":") + g.Cfg().MustGet(ctx, "router.websocket.prefix").String()
-	}
-
 	basic, err := service.SysConfig().GetBasic(ctx)
-	if err != nil || basic == nil {
+	if err == nil && basic != nil && basic.WsAddr != "" {
+		return basic.WsAddr
+	}
+
+	// 配置缺失时按当前访问域名兜底，避免线上页面拿到 127.0.0.1 导致浏览器直连本机。
+	host := request.GetHost()
+	if host == "" {
+		host = request.Host
+	}
+	if host == "" {
 		return ""
 	}
-	return basic.WsAddr
+	protocol := "ws://"
+	if gstr.Equal(gstr.ToLower(request.GetHeader("X-Forwarded-Proto")), "https") || request.TLS != nil {
+		protocol = "wss://"
+	}
+	return protocol + host + g.Cfg().MustGet(ctx, "router.websocket.prefix").String()
 }
 
 func (c *cSite) getDomain(ctx context.Context, request *ghttp.Request) string {
