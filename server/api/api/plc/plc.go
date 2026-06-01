@@ -1,7 +1,10 @@
 // Package plc 前台 PLC 接口（暂未启用签名验签）
 package plc
 
-import "github.com/gogf/gf/v2/frame/g"
+import (
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gtime"
+)
 
 // DevicesReq 当前可用设备列表
 type DevicesReq struct {
@@ -41,8 +44,9 @@ type MinesRes struct {
 
 // OverviewReq 看板汇总: 设备 + 数据点 + 实时值
 type OverviewReq struct {
-	g.Meta   `path:"/plc/overview" method:"get" tags:"PLC前台" summary:"看板汇总(设备+数据点+实时值)"`
-	DeviceId int `p:"deviceId" v:"required|min:1#设备ID不能为空" dc:"设备ID"`
+	g.Meta     `path:"/plc/overview" method:"get" tags:"PLC前台" summary:"看板汇总(设备+数据点+实时值)"`
+	DeviceId   int  `p:"deviceId"    v:"required|min:1#设备ID不能为空" dc:"设备ID"`
+	WithAlarms bool `p:"withAlarms"  dc:"是否同时返回报警点(AL_前缀)，默认 false"`
 }
 
 type OverviewDevice struct {
@@ -56,23 +60,28 @@ type OverviewDevice struct {
 }
 
 type OverviewPoint struct {
-	PointId   int      `json:"pointId"`
-	Field     string   `json:"field"`
-	Name      string   `json:"name"`
-	DataType  string   `json:"dataType"`
-	Unit      string   `json:"unit"`
-	Scale     float64  `json:"scale"`
-	OffsetVal float64  `json:"offsetVal"`
-	AlarmMin  *float64 `json:"alarmMin,omitempty"`
-	AlarmMax  *float64 `json:"alarmMax,omitempty"`
-	Sort      int      `json:"sort"`
-	EngValue  *float64 `json:"engValue"`
-	AlarmType int      `json:"alarmType"`
+	PointId     int         `json:"pointId"`
+	Field       string      `json:"field"`
+	Name        string      `json:"name"`
+	DataType    string      `json:"dataType"`
+	Unit        string      `json:"unit"`
+	Scale       float64     `json:"scale"`
+	OffsetVal   float64     `json:"offsetVal"`
+	AlarmMin    *float64    `json:"alarmMin,omitempty"`
+	AlarmMax    *float64    `json:"alarmMax,omitempty"`
+	Sort        int         `json:"sort"`
+	EngValue    *float64    `json:"engValue"`
+	AlarmType   int         `json:"alarmType"`
+	CollectedAt *gtime.Time `json:"collectedAt,omitempty"`
+	// Bool 点位语义化：active 表示是否激活（运行/报警），stateText 显示文案。
+	Active    *bool  `json:"active,omitempty"`
+	StateText string `json:"stateText,omitempty"`
 }
 
 type OverviewRes struct {
 	Device *OverviewDevice  `json:"device"`
-	Points []*OverviewPoint `json:"points"`
+	Points []*OverviewPoint `json:"points"`           // 普通数据点（实时监控）
+	Alarms []*OverviewPoint `json:"alarms,omitempty"` // 报警点（AL_前缀，仅 withAlarms=true 时返回）
 }
 
 // HistoryReq 单点位历史数据 (画图用)

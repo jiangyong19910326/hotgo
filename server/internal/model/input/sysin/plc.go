@@ -182,14 +182,15 @@ type PlcRealtimeInp struct {
 }
 
 type PlcRealtimeItem struct {
-	PointId   int      `json:"pointId"`
-	Field     string   `json:"field"`
-	Name      string   `json:"name"`
-	EngValue  float64  `json:"engValue"`
-	Unit      string   `json:"unit"`
-	AlarmType int      `json:"alarmType"` // 0正常 1超上限 2超下限
-	AlarmMax  *float64 `json:"alarmMax"`
-	AlarmMin  *float64 `json:"alarmMin"`
+	PointId     int         `json:"pointId"`
+	Field       string      `json:"field"`
+	Name        string      `json:"name"`
+	EngValue    float64     `json:"engValue"`
+	Unit        string      `json:"unit"`
+	AlarmType   int         `json:"alarmType"` // 0正常 1超上限 2超下限
+	AlarmMax    *float64    `json:"alarmMax"`
+	AlarmMin    *float64    `json:"alarmMin"`
+	CollectedAt *gtime.Time `json:"collectedAt"`
 }
 
 type PlcRealtimeModel struct {
@@ -252,18 +253,19 @@ type PlcOverviewInp struct {
 }
 
 type PlcOverviewPoint struct {
-	PointId   int      `json:"pointId"`
-	Field     string   `json:"field"`
-	Name      string   `json:"name"`
-	DataType  string   `json:"dataType"`
-	Unit      string   `json:"unit"`
-	Scale     float64  `json:"scale"`
-	OffsetVal float64  `json:"offsetVal"`
-	AlarmMin  *float64 `json:"alarmMin"`
-	AlarmMax  *float64 `json:"alarmMax"`
-	Sort      int      `json:"sort"`
-	EngValue  *float64 `json:"engValue"`            // 实时工程值, nil 表示尚无数据
-	AlarmType int      `json:"alarmType"`           // 0=正常 1=超上限 2=超下限
+	PointId     int         `json:"pointId"`
+	Field       string      `json:"field"`
+	Name        string      `json:"name"`
+	DataType    string      `json:"dataType"`
+	Unit        string      `json:"unit"`
+	Scale       float64     `json:"scale"`
+	OffsetVal   float64     `json:"offsetVal"`
+	AlarmMin    *float64    `json:"alarmMin"`
+	AlarmMax    *float64    `json:"alarmMax"`
+	Sort        int         `json:"sort"`
+	EngValue    *float64    `json:"engValue"`    // 实时工程值, nil 表示尚无数据
+	AlarmType   int         `json:"alarmType"`   // 0=正常 1=超上限 2=超下限
+	CollectedAt *gtime.Time `json:"collectedAt"` // 最近采集时间, 用于判断数据是否新鲜
 }
 
 type PlcOverviewModel struct {

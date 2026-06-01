@@ -73,12 +73,16 @@ func onMessage(_ mqtt.Client, msg mqtt.Message) {
 		if rtErr := service.PlcRealtime().Set(ctx, dev.Id, items); rtErr != nil {
 			g.Log().Warningf(ctx, "mqttx: Realtime.Set err: %v", rtErr)
 		}
-	}
-	if len(alarms) > 0 {
-		if aErr := service.PlcAlarm().TriggerIfNeeded(ctx, dev.Id, alarms); aErr != nil {
+		// 把全部 items 交给报警服务，由它根据 alarmType + AL_ 字段决定新增/自动恢复。
+		all := make([]sysin.PlcRealtimeItem, 0, len(items))
+		for _, it := range items {
+			all = append(all, *it)
+		}
+		if aErr := service.PlcAlarm().TriggerIfNeeded(ctx, dev.Id, all); aErr != nil {
 			g.Log().Warningf(ctx, "mqttx: Alarm.Trigger err: %v", aErr)
 		}
 	}
+	_ = alarms
 }
 
 // extractDeviceCode 从 topic /dtu/{code}/data 取 code
@@ -110,6 +114,14 @@ func buildResults(dev *entity.PlcDevice, points []*entity.PlcPoint, payload map[
 			alarmType = 1
 		} else if p.AlarmMin != nil && engVal < *p.AlarmMin {
 			alarmType = 2
+		}
+		// AL_ 前缀的报警 Bool 点位：engValue=1 即视为报警；engValue=0 视为恢复正常。
+		if strings.HasPrefix(strings.ToUpper(p.Field), "AL_") {
+			if engVal != 0 {
+				alarmType = 3
+			} else {
+				alarmType = 0
+			}
 		}
 
 		engCopy := engVal

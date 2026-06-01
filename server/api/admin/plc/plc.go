@@ -147,9 +147,20 @@ type RealtimeRes struct {
 type OverviewReq struct {
 	g.Meta `path:"/plc/overview" method:"get" tags:"PLC实时" summary:"看板汇总(设备+数据点+实时值)"`
 	sysin.PlcOverviewInp
+	WithAlarms bool `p:"withAlarms" dc:"是否同时返回报警点(AL_前缀)，默认 false"`
 }
+
+// OverviewPointVO 实时监控用的扩展点位（增加 active / stateText）。
+type OverviewPointVO struct {
+	*sysin.PlcOverviewPoint
+	Active    *bool  `json:"active,omitempty"`
+	StateText string `json:"stateText,omitempty"`
+}
+
 type OverviewRes struct {
-	*sysin.PlcOverviewModel
+	Device *sysin.PlcDeviceViewModel `json:"device"`
+	Points []*OverviewPointVO        `json:"points"`           // 普通数据点，实时监控页面用
+	Alarms []*OverviewPointVO        `json:"alarms,omitempty"` // 报警点（AL_前缀），仅 withAlarms=true 时返回
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -230,3 +241,22 @@ type AppGenSecretRes struct {
 	AppSecret string `json:"appSecret"`
 }
 
+// ─────────────────────────────────────────────────────────────
+// 图表数据（ECharts，监控大屏用）
+// ─────────────────────────────────────────────────────────────
+
+type ChartTemperatureReq struct {
+	g.Meta `path:"/plc/chart/temperature" method:"get" tags:"PLC图表" summary:"设备温度折线图(设备/回油/油箱)"`
+	sysin.PlcChartTemperatureInp
+}
+type ChartTemperatureRes struct {
+	*sysin.PlcChartModel
+}
+
+type ChartCurrentReq struct {
+	g.Meta `path:"/plc/chart/current" method:"get" tags:"PLC图表" summary:"设备电流折线图"`
+	sysin.PlcChartCurrentInp
+}
+type ChartCurrentRes struct {
+	*sysin.PlcChartModel
+}

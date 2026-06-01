@@ -3,6 +3,7 @@ package sys
 
 import (
 	"context"
+	"strings"
 
 	"hotgo/api/admin/plc"
 	"hotgo/internal/model/input/sysin"
@@ -174,9 +175,49 @@ func (c *cPlc) Overview(ctx context.Context, req *plc.OverviewReq) (res *plc.Ove
 	if err != nil {
 		return
 	}
-	res = new(plc.OverviewRes)
-	res.PlcOverviewModel = data
+	res = &plc.OverviewRes{Points: []*plc.OverviewPointVO{}}
+	if data == nil || data.Device == nil {
+		return
+	}
+	res.Device = data.Device
+	if req.WithAlarms {
+		res.Alarms = []*plc.OverviewPointVO{}
+	}
+	for _, p := range data.Points {
+		vo := &plc.OverviewPointVO{PlcOverviewPoint: p}
+		isAlarm := strings.HasPrefix(strings.ToUpper(p.Field), "AL_")
+		fillOverviewBoolState(vo, isAlarm)
+		if isAlarm {
+			if req.WithAlarms {
+				res.Alarms = append(res.Alarms, vo)
+			}
+			continue
+		}
+		res.Points = append(res.Points, vo)
+	}
 	return
+}
+
+// fillOverviewBoolState 给 Bool 点位补 active / stateText，便于前端展示运行/停止/报警/正常。
+func fillOverviewBoolState(vo *plc.OverviewPointVO, isAlarm bool) {
+	if vo == nil || vo.PlcOverviewPoint == nil {
+		return
+	}
+	if !strings.EqualFold(vo.DataType, "Bool") || vo.EngValue == nil {
+		return
+	}
+	active := *vo.EngValue != 0
+	vo.Active = &active
+	switch {
+	case isAlarm && active:
+		vo.StateText = "报警"
+	case isAlarm && !active:
+		vo.StateText = "正常"
+	case !isAlarm && active:
+		vo.StateText = "运行"
+	default:
+		vo.StateText = "停止"
+	}
 }
 
 func (c *cPlc) History(ctx context.Context, req *plc.HistoryReq) (res *plc.HistoryRes, err error) {
@@ -257,5 +298,27 @@ func (c *cPlc) AppStatus(ctx context.Context, req *plc.AppStatusReq) (res *plc.A
 
 func (c *cPlc) AppGenSecret(ctx context.Context, _ *plc.AppGenSecretReq) (res *plc.AppGenSecretRes, err error) {
 	res = &plc.AppGenSecretRes{AppSecret: service.PlcApp().GenSecret(ctx)}
+	return
+}
+
+// ─────────────────────────────────────────────────────────────
+// 图表数据（ECharts）
+// ─────────────────────────────────────────────────────────────
+
+func (c *cPlc) ChartTemperature(ctx context.Context, req *plc.ChartTemperatureReq) (res *plc.ChartTemperatureRes, err error) {
+	data, err := service.PlcChart().Temperature(ctx, &req.PlcChartTemperatureInp)
+	if err != nil {
+		return
+	}
+	res = &plc.ChartTemperatureRes{PlcChartModel: data}
+	return
+}
+
+func (c *cPlc) ChartCurrent(ctx context.Context, req *plc.ChartCurrentReq) (res *plc.ChartCurrentRes, err error) {
+	data, err := service.PlcChart().Current(ctx, &req.PlcChartCurrentInp)
+	if err != nil {
+		return
+	}
+	res = &plc.ChartCurrentRes{PlcChartModel: data}
 	return
 }

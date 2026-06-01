@@ -11,6 +11,7 @@ import (
 
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/gogf/gf/v2/util/gconv"
 )
 
@@ -38,14 +39,19 @@ func (s *sPlcRealtime) Set(ctx context.Context, deviceId int, items []*sysin.Plc
 	}
 	defer rds.Close(ctx)
 
+	now := gtime.Now()
 	for _, item := range items {
+		if item.CollectedAt == nil {
+			item.CollectedAt = now
+		}
 		data := g.Map{
-			"pointId":   item.PointId,
-			"field":     item.Field,
-			"name":      item.Name,
-			"engValue":  item.EngValue,
-			"unit":      item.Unit,
-			"alarmType": item.AlarmType,
+			"pointId":     item.PointId,
+			"field":       item.Field,
+			"name":        item.Name,
+			"engValue":    item.EngValue,
+			"unit":        item.Unit,
+			"alarmType":   item.AlarmType,
+			"collectedAt": item.CollectedAt,
 		}
 		if item.AlarmMax != nil {
 			data["alarmMax"] = *item.AlarmMax
@@ -122,15 +128,19 @@ func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (
 			missIds = append(missIds, p.Id)
 		}
 	}
-	dbFallback := make(map[int]float64) // pointId → engValue
+	dbFallback := make(map[int]struct {
+		EngValue    float64
+		CollectedAt *gtime.Time
+	}) // pointId -> latest record
 	if len(missIds) > 0 {
 		var rows []struct {
-			PointId  int      `orm:"point_id"`
-			EngValue *float64 `orm:"eng_value"`
+			PointId     int         `orm:"point_id"`
+			EngValue    *float64    `orm:"eng_value"`
+			CollectedAt *gtime.Time `orm:"collected_at"`
 		}
 		// 子查询: 每个 point 的最大 collected_at 对应一条
 		err = dao.PlcRecord.Ctx(ctx).
-			Fields("point_id, eng_value").
+			Fields("point_id, eng_value, collected_at").
 			Where("id IN (?)",
 				dao.PlcRecord.Ctx(ctx).
 					Fields("MAX(id) as id").
@@ -140,7 +150,10 @@ func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (
 		if err == nil {
 			for _, r := range rows {
 				if r.EngValue != nil {
-					dbFallback[r.PointId] = *r.EngValue
+					dbFallback[r.PointId] = struct {
+						EngValue    float64
+						CollectedAt *gtime.Time
+					}{EngValue: *r.EngValue, CollectedAt: r.CollectedAt}
 				}
 			}
 		}
@@ -167,9 +180,11 @@ func (s *sPlcRealtime) Overview(ctx context.Context, in *sysin.PlcOverviewInp) (
 			v := r.EngValue
 			op.EngValue = &v
 			op.AlarmType = r.AlarmType
+			op.CollectedAt = r.CollectedAt
 		} else if v, ok := dbFallback[p.Id]; ok {
-			vv := v
+			vv := v.EngValue
 			op.EngValue = &vv
+			op.CollectedAt = v.CollectedAt
 			// 报警判定: 仅用阈值, 不重写
 			if p.AlarmMax != nil && vv > *p.AlarmMax {
 				op.AlarmType = 1

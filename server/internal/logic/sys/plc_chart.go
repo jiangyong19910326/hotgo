@@ -37,17 +37,48 @@ func init() {
 	service.RegisterPlcChart(NewPlcChart())
 }
 
-// defaultChartRange 若前端未传时间则默认取最近1小时，并按跨度选择聚合粒度。
-func defaultChartRange(startTime, endTime string) plcChartRange {
+// defaultChartRange 时间窗策略：
+// 1. 显式传 startTime/endTime 时按用户指定。
+// 2. 缺失 endTime 时优先取该设备最新一条记录的时间，回退到 now。
+// 3. 缺失 startTime 时按 endTime 向前 1 小时。
+func defaultChartRange(ctx context.Context, deviceId int, startTime, endTime string) plcChartRange {
 	end := normalizeChartTime(endTime, false)
 	if end == "" {
-		end = gtime.Now().Format("Y-m-d H:i:s")
+		if latest := latestRecordTime(ctx, deviceId); latest != "" {
+			end = latest
+		} else {
+			end = gtime.Now().Format("Y-m-d H:i:s")
+		}
 	}
 	start := normalizeChartTime(startTime, true)
 	if start == "" {
-		start = gtime.NewFromTime(time.Now().Add(-1 * time.Hour)).Format("Y-m-d H:i:s")
+		if et, err := time.ParseInLocation("2006-01-02 15:04:05", end, time.Local); err == nil {
+			start = et.Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+		} else {
+			start = gtime.NewFromTime(time.Now().Add(-1 * time.Hour)).Format("Y-m-d H:i:s")
+		}
 	}
 	return plcChartRange{Start: start, End: end, Interval: chooseChartInterval(start, end)}
+}
+
+// latestRecordTime 返回该设备最新一条 plc_record 的采集时间字符串；无记录时返回空串。
+func latestRecordTime(ctx context.Context, deviceId int) string {
+	if deviceId <= 0 {
+		return ""
+	}
+	var row struct {
+		CollectedAt *gtime.Time `orm:"collected_at"`
+	}
+	_ = dao.PlcRecord.Ctx(ctx).
+		Fields(dao.PlcRecord.Columns().CollectedAt).
+		Where(dao.PlcRecord.Columns().DeviceId, deviceId).
+		OrderDesc(dao.PlcRecord.Columns().CollectedAt).
+		Limit(1).
+		Scan(&row)
+	if row.CollectedAt == nil {
+		return ""
+	}
+	return row.CollectedAt.Format("Y-m-d H:i:s")
 }
 
 // normalizeChartTime 兼容前端传 YYYY-MM、YYYY-MM-DD、YYYY-MM-DD HH:mm:ss 三种格式。
@@ -206,18 +237,33 @@ func chartLegend(series []*sysin.PlcChartSeries) []string {
 	return legend
 }
 
-// resolveField 未显式传 field 时，按当前设备已有点位自动匹配真实字段名。
+// resolveField 未显式传 field 时，按当前设备已有点位自动匹配真实字段名（取第一个）。
 func (s *sPlcChart) resolveField(ctx context.Context, deviceId int, candidates, excludes []string) string {
-	var rows []struct{ Field string `orm:"field"` }
+	matched := s.resolveFields(ctx, deviceId, candidates, excludes, true)
+	if len(matched) == 0 {
+		return ""
+	}
+	return matched[0]
+}
+
+// resolveFields 返回当前设备所有命中候选关键字的字段；firstOnly=true 时只返回第一个命中的候选组。
+func (s *sPlcChart) resolveFields(ctx context.Context, deviceId int, candidates, excludes []string, firstOnly bool) []string {
+	var rows []struct {
+		Field string `orm:"field"`
+	}
 	_ = dao.PlcPoint.Ctx(ctx).
 		Fields(dao.PlcPoint.Columns().Field).
 		Where(dao.PlcPoint.Columns().DeviceId, deviceId).
 		Where(dao.PlcPoint.Columns().Status, 1).
 		OrderAsc(dao.PlcPoint.Columns().Sort).
+		OrderAsc(dao.PlcPoint.Columns().Id).
 		Scan(&rows)
 
+	matched := make([]string, 0)
+	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
 		candidate = strings.ToLower(candidate)
+		hit := false
 		for _, row := range rows {
 			field := row.Field
 			lower := strings.ToLower(field)
@@ -231,67 +277,85 @@ func (s *sPlcChart) resolveField(ctx context.Context, deviceId int, candidates, 
 					break
 				}
 			}
-			if !matchedExclude {
-				return field
+			if matchedExclude {
+				continue
 			}
+			if _, ok := seen[field]; ok {
+				continue
+			}
+			seen[field] = struct{}{}
+			matched = append(matched, field)
+			hit = true
+		}
+		if firstOnly && hit {
+			break
 		}
 	}
-	return ""
+	return matched
 }
 
-// Temperature 单台设备的温度折线。
-func (s *sPlcChart) Temperature(ctx context.Context, in *sysin.PlcChartTemperatureInp) (res *sysin.PlcChartModel, err error) {
-	r := defaultChartRange(in.StartTime, in.EndTime)
-
-	fieldTemp := in.FieldTemp
-	if fieldTemp == "" {
-		fieldTemp = s.resolveField(ctx, in.DeviceId, []string{"device_temp", "mot_bear", "mot_wdg", "bearing_temp", "stator_temp", "temp"}, []string{"return", "tank", "alarm", "al_", "sensor", "high", "low"})
+// findPointByField 根据 field 找点位。
+func (s *sPlcChart) findPointByField(ctx context.Context, deviceId int, field string) *plcChartPoint {
+	if field == "" {
+		return nil
 	}
+	p, err := s.findPoint(ctx, deviceId, field)
+	if err != nil || p == nil {
+		return nil
+	}
+	return p
+}
+
+// Temperature 单台设备的温度折线（设备温度 / 回油温度 / 油箱温度）。
+func (s *sPlcChart) Temperature(ctx context.Context, in *sysin.PlcChartTemperatureInp) (res *sysin.PlcChartModel, err error) {
+	r := defaultChartRange(ctx, in.DeviceId, in.StartTime, in.EndTime)
+
+	excludeCommon := []string{"alarm", "al_", "sensor", "high", "low", "stop", "报警", "传感器", "高", "低", "停"}
+
 	fieldOilBack := in.FieldOilBack
 	if fieldOilBack == "" {
-		fieldOilBack = s.resolveField(ctx, in.DeviceId, []string{"lube_return_temp", "return_oil_temp", "return_temp"}, []string{"alarm", "al_", "sensor", "high", "low"})
+		fieldOilBack = s.resolveField(ctx, in.DeviceId,
+			[]string{"lube_return_temp", "return_oil_temp", "return_temp", "回油温度", "回油温"},
+			excludeCommon)
 	}
 	fieldOilTank := in.FieldOilTank
 	if fieldOilTank == "" {
-		fieldOilTank = s.resolveField(ctx, in.DeviceId, []string{"lube_tank_temp", "oil_tank_temp", "tank_temp"}, []string{"alarm", "al_", "sensor", "high", "low"})
+		fieldOilTank = s.resolveField(ctx, in.DeviceId,
+			[]string{"lube_tank_temp", "oil_tank_temp", "tank_temp", "油箱温度", "油箱温"},
+			excludeCommon)
+	}
+	// 设备温度（绕组/轴承/定子）：优先 1#WDG1，再退化到 WDG，再到 BEAR / STATOR / FRONT_BEARING；中文兼容“电机绕组/电机轴承/定子”。
+	fieldTemp := in.FieldTemp
+	if fieldTemp == "" {
+		fieldTemp = s.resolveField(ctx, in.DeviceId,
+			[]string{"1#mot_wdg1_temp", "mot_wdg1_temp", "stator_temp_a", "front_bearing_temp", "mot_wdg_temp", "mot_bear1_temp", "bearing_temp", "stator_temp", "device_temp", "电机绕组温度", "绕组温度", "定子温度", "电机轴承温度", "轴承温度", "电机温度", "设备温度"},
+			excludeCommon)
 	}
 
-	tempPoint, err := s.findPoint(ctx, in.DeviceId, fieldTemp)
-	if err != nil {
-		return nil, err
-	}
-	oilBackPoint, err := s.findPoint(ctx, in.DeviceId, fieldOilBack)
-	if err != nil {
-		return nil, err
-	}
-	oilTankPoint, err := s.findPoint(ctx, in.DeviceId, fieldOilTank)
-	if err != nil {
-		return nil, err
-	}
+	oilBackPoint := s.findPointByField(ctx, in.DeviceId, fieldOilBack)
+	oilTankPoint := s.findPointByField(ctx, in.DeviceId, fieldOilTank)
+	tempPoint := s.findPointByField(ctx, in.DeviceId, fieldTemp)
 
-	dataTemp := map[string]float64{}
-	if tempPoint != nil {
-		dataTemp, err = s.queryPointData(ctx, tempPoint.Id, r)
-		if err != nil {
-			return nil, err
-		}
-	}
 	dataOilBack := map[string]float64{}
 	if oilBackPoint != nil {
-		dataOilBack, err = s.queryPointData(ctx, oilBackPoint.Id, r)
-		if err != nil {
+		if dataOilBack, err = s.queryPointData(ctx, oilBackPoint.Id, r); err != nil {
 			return nil, err
 		}
 	}
 	dataOilTank := map[string]float64{}
 	if oilTankPoint != nil {
-		dataOilTank, err = s.queryPointData(ctx, oilTankPoint.Id, r)
-		if err != nil {
+		if dataOilTank, err = s.queryPointData(ctx, oilTankPoint.Id, r); err != nil {
+			return nil, err
+		}
+	}
+	dataTemp := map[string]float64{}
+	if tempPoint != nil {
+		if dataTemp, err = s.queryPointData(ctx, tempPoint.Id, r); err != nil {
 			return nil, err
 		}
 	}
 
-	xAxis := collectXAxis(dataTemp, dataOilBack, dataOilTank)
+	xAxis := collectXAxis(dataOilBack, dataOilTank, dataTemp)
 	series := []*sysin.PlcChartSeries{}
 	series = appendChartSeries(series, buildSeries("设备温度", tempPoint, "℃", xAxis, dataTemp))
 	series = appendChartSeries(series, buildSeries("回油温度", oilBackPoint, "℃", xAxis, dataOilBack))
@@ -300,26 +364,46 @@ func (s *sPlcChart) Temperature(ctx context.Context, in *sysin.PlcChartTemperatu
 	return &sysin.PlcChartModel{Meta: chartMeta(in.DeviceId, r, len(xAxis)), Legend: chartLegend(series), XAxis: xAxis, Series: series}, nil
 }
 
-// Current 单台设备的电流折线。
+// Current 单台设备的电流折线；设备含多路电流时全部返回（如 1#/2# CRUSHER_AMPERE_ZSJ）。
 func (s *sPlcChart) Current(ctx context.Context, in *sysin.PlcChartCurrentInp) (res *sysin.PlcChartModel, err error) {
-	r := defaultChartRange(in.StartTime, in.EndTime)
-	fieldCurrent := in.FieldCurrent
-	if fieldCurrent == "" {
-		fieldCurrent = s.resolveField(ctx, in.DeviceId, []string{"crusher_ampere", "main_current", "ampere", "current"}, []string{"alarm", "al_"})
+	r := defaultChartRange(ctx, in.DeviceId, in.StartTime, in.EndTime)
+
+	excludeCommon := []string{"alarm", "al_", "报警"}
+
+	var fields []string
+	if in.FieldCurrent != "" {
+		fields = []string{in.FieldCurrent}
+	} else {
+		fields = s.resolveFields(ctx, in.DeviceId,
+			[]string{"crusher_ampere", "main_current", "ampere", "current", "破碎机电流", "主电流", "电机电流", "电流"},
+			excludeCommon, true)
 	}
-	point, err := s.findPoint(ctx, in.DeviceId, fieldCurrent)
-	if err != nil {
-		return nil, err
-	}
-	dataCurrent := map[string]float64{}
-	if point != nil {
-		dataCurrent, err = s.queryPointData(ctx, point.Id, r)
-		if err != nil {
-			return nil, err
+
+	allData := make([]map[string]float64, 0, len(fields))
+	points := make([]*plcChartPoint, 0, len(fields))
+	for _, f := range fields {
+		p := s.findPointByField(ctx, in.DeviceId, f)
+		data := map[string]float64{}
+		if p != nil {
+			if data, err = s.queryPointData(ctx, p.Id, r); err != nil {
+				return nil, err
+			}
 		}
+		points = append(points, p)
+		allData = append(allData, data)
 	}
-	xAxis := collectXAxis(dataCurrent)
+	xAxis := collectXAxis(allData...)
+
 	series := []*sysin.PlcChartSeries{}
-	series = appendChartSeries(series, buildSeries("电流", point, "A", xAxis, dataCurrent))
+	for i, p := range points {
+		name := "电流"
+		if p != nil && p.Field != "" {
+			// 多路电流时用 field 作为序列名，单路时仍叫"电流"
+			if len(points) > 1 {
+				name = p.Field
+			}
+		}
+		series = appendChartSeries(series, buildSeries(name, p, "A", xAxis, allData[i]))
+	}
 	return &sysin.PlcChartModel{Meta: chartMeta(in.DeviceId, r, len(xAxis)), Legend: chartLegend(series), XAxis: xAxis, Series: series}, nil
 }

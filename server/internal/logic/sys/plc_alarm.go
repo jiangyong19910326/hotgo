@@ -67,35 +67,51 @@ func (s *sPlcAlarm) Resolve(ctx context.Context, in *sysin.PlcAlarmResolveInp) (
 	return
 }
 
-// TriggerIfNeeded 根据采集结果批量写入报警（已有未处理报警则不重复写入）
+// TriggerIfNeeded 根据采集结果同步报警：
+// 1. AlarmType != 0 时若没有未处理报警则新增一条；
+// 2. AlarmType == 0 且存在未处理报警时自动标记为已恢复。
 func (s *sPlcAlarm) TriggerIfNeeded(ctx context.Context, deviceId int, results []sysin.PlcRealtimeItem) error {
 	for _, r := range results {
-		if r.AlarmType == 0 {
+		if r.AlarmType != 0 {
+			count, err := dao.PlcAlarm.Ctx(ctx).
+				Where(dao.PlcAlarm.Columns().PointId, r.PointId).
+				Where(dao.PlcAlarm.Columns().IsResolved, 2).
+				Count()
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				continue
+			}
+			now := gtime.Now()
+			if _, err = dao.PlcAlarm.Ctx(ctx).Data(&entity.PlcAlarm{
+				DeviceId:    deviceId,
+				PointId:     r.PointId,
+				Field:       r.Field,
+				PointName:   r.Name,
+				EngValue:    r.EngValue,
+				AlarmType:   r.AlarmType,
+				AlarmMin:    r.AlarmMin,
+				AlarmMax:    r.AlarmMax,
+				Unit:        r.Unit,
+				IsResolved:  2,
+				TriggeredAt: now,
+				CreatedAt:   now,
+			}).Insert(); err != nil {
+				return err
+			}
 			continue
 		}
-		// 检查是否已有相同点位未处理的报警
-		count, err := dao.PlcAlarm.Ctx(ctx).
+		// AlarmType == 0：自动恢复该点位仍未处理的报警
+		now := gtime.Now()
+		_, err := dao.PlcAlarm.Ctx(ctx).
 			Where(dao.PlcAlarm.Columns().PointId, r.PointId).
 			Where(dao.PlcAlarm.Columns().IsResolved, 2).
-			Count()
-		if err != nil || count > 0 {
-			continue
-		}
-		now := gtime.Now()
-		_, err = dao.PlcAlarm.Ctx(ctx).Data(&entity.PlcAlarm{
-			DeviceId:    deviceId,
-			PointId:     r.PointId,
-			Field:       r.Field,
-			PointName:   r.Name,
-			EngValue:    r.EngValue,
-			AlarmType:   r.AlarmType,
-			AlarmMin:    r.AlarmMin,
-			AlarmMax:    r.AlarmMax,
-			Unit:        r.Unit,
-			IsResolved:  2,
-			TriggeredAt: now,
-			CreatedAt:   now,
-		}).Insert()
+			Data(g.Map{
+				dao.PlcAlarm.Columns().IsResolved: 1,
+				dao.PlcAlarm.Columns().ResolvedAt: now,
+				dao.PlcAlarm.Columns().Remark:     "自动恢复",
+			}).Update()
 		if err != nil {
 			return err
 		}
