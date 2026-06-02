@@ -1,5 +1,5 @@
 <template>
-  <div class="hmi-screen">
+  <div ref="screenRef" class="hmi-screen">
     <div class="warehouse-orbit orbit-a"></div>
     <div class="warehouse-orbit orbit-b"></div>
 
@@ -28,6 +28,9 @@
           @update:value="onDeviceChange"
         />
         <span class="clock">{{ clock }}</span>
+        <n-button class="fullscreen-btn" size="small" ghost @click="toggleFullscreen">
+          {{ isFullscreen ? '退出全屏' : '全屏' }}
+        </n-button>
       </div>
     </div>
 
@@ -39,8 +42,8 @@
         :class="item.tone"
       >
         <span class="chip-label">{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small>{{ item.desc }}</small>
+        <strong :key="`${item.label}-${item.value}`" class="chip-value">{{ item.value }}</strong>
+        <small :key="`${item.label}-${item.desc}`" class="chip-desc">{{ item.desc }}</small>
       </div>
     </div>
 
@@ -51,8 +54,9 @@
         <div class="block">
           <div class="block-title">仪表监测</div>
           <div class="gauges">
-            <div ref="voltageGaugeRef" class="gauge"></div>
+            <div ref="oilLevelGaugeRef" class="gauge"></div>
             <div ref="currentGaugeRef" class="gauge"></div>
+            <div ref="lubeStatusGaugeRef" class="gauge gauge-wide"></div>
           </div>
         </div>
 
@@ -82,34 +86,14 @@
           </div>
           <div class="device-canvas">
             <div class="machine-stage">
-              <img class="machine-bg" :src="monitorBg" alt="设备实时监控背景" />
-              <svg class="guide-layer" viewBox="0 0 1000 520" preserveAspectRatio="none">
-                <defs>
-                  <filter id="guideGlow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="2.5" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                <g
-                  v-for="(item, index) in monitorReadouts"
-                  :key="item.label"
-                  filter="url(#guideGlow)"
-                >
-                  <path
-                    :id="`guide-path-${index}`"
-                    :d="`M ${item.anchor[0]} ${item.anchor[1]} L ${item.bend[0]} ${item.bend[1]} L ${item.card[0]} ${item.card[1]}`"
-                    class="guide-line"
-                  />
-                  <circle r="4.8" class="travel-dot">
-                    <animateMotion dur="2.8s" repeatCount="indefinite" rotate="auto">
-                      <mpath :href="`#guide-path-${index}`" />
-                    </animateMotion>
-                  </circle>
-                </g>
-              </svg>
+              <canvas
+                ref="modelCanvasRef"
+                class="machine-model"
+                aria-label="设备三维模型"
+                @mouseenter="setModelZoomEnabled(true)"
+                @mouseleave="setModelZoomEnabled(false)"
+                @wheel.stop
+              ></canvas>
               <div class="readout-panel">
                 <div
                   v-for="item in monitorReadouts"
@@ -126,6 +110,9 @@
                 <span></span>
                 数据实时更新
               </div>
+              <button class="model-rotate-btn" type="button" @click="toggleModelRotate">
+                {{ modelAutoRotate ? '停止旋转' : '旋转模型' }}
+              </button>
             </div>
           </div>
         </div>
@@ -149,10 +136,10 @@
           <div class="block-title">设备状态</div>
           <div class="status-list">
             <div v-for="s in statusList" :key="s.field" class="status-row">
-              <span class="status-led" :class="isPointActive(s) ? 'led-on' : 'led-off'"></span>
+              <span class="status-led" :class="isStatusOn(s) ? 'led-on' : 'led-off'"></span>
               <span class="status-name">{{ s.name || s.field }}</span>
-              <span class="status-text" :class="isPointActive(s) ? 'txt-on' : 'txt-off'">
-                {{ s.stateText || (isPointActive(s) ? '运行' : '停止') }}
+              <span class="status-text" :class="isStatusOn(s) ? 'txt-on' : 'txt-off'">
+                {{ statusText(s) }}
               </span>
             </div>
             <div v-if="statusList.length === 0" class="status-empty">暂无状态点位</div>
@@ -186,11 +173,15 @@
 <script lang="ts" setup>
   import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
   import * as echarts from 'echarts';
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
   import { MineOptions, DeviceList, Overview } from '@/api/plc';
   import { http } from '@/utils/http/axios';
   import { SocketEnum } from '@/enums/socketEnum';
   import { addOnMessage, removeOnMessage, WebSocketMessage } from '@/utils/websocket';
-  import monitorBg from '@/assets/images/plc-realtime-bg.png';
+  import hp300ModelUrl from '@/assets/models/zxhp300.glb?url';
+  import sandMakerModelUrl from '@/assets/models/sand-maker-1263.glb?url';
 
   const mineId = ref<number | null>(null);
   const deviceId = ref<number | null>(null);
@@ -203,9 +194,12 @@
   const allAlarms = ref<any[]>([]);
   const loading = ref(false);
   const clock = ref('');
+  const screenRef = ref<HTMLElement>();
+  const isFullscreen = ref(false);
   let clockTimer: any = null;
   let refreshTimer: any = null;
   let chartTimer: any = null;
+  let carouselTimer: any = null;
   const autoRefresh = ref(true);
   const overviewRefreshMs = 60 * 1000;
   const chartRefreshMs = 60 * 1000;
@@ -218,6 +212,20 @@
   const alarms = computed(() => allAlarms.value.filter((a) => a.active));
   const activeAlarmCount = computed(() => alarms.value.length);
   const firstAlarm = computed(() => alarms.value[0]);
+  const alarmCarouselIndex = ref(0);
+  const statusCarouselIndex = ref(0);
+
+  const alarmCarouselItem = computed(() => {
+    const list = allAlarms.value;
+    if (list.length === 0) return null;
+    return list[alarmCarouselIndex.value % list.length];
+  });
+
+  const statusCarouselItem = computed(() => {
+    const list = statusList.value;
+    if (list.length === 0) return null;
+    return list[statusCarouselIndex.value % list.length];
+  });
 
   const readoutValue = (keys: string[], fallback = '—') => {
     const keySet = keys.map((key) => key.toLowerCase());
@@ -236,6 +244,7 @@
   };
 
   const runState = computed(() => getDeviceRunState());
+  const isDeviceOffline = computed(() => runState.value === '离线');
 
   const warehouseStats = computed(() => [
     {
@@ -252,15 +261,26 @@
     },
     {
       label: '报警通道',
-      value: activeAlarmCount.value,
-      desc: `共 ${allAlarms.value.length} 路`,
-      tone: activeAlarmCount.value > 0 ? 'tone-red' : 'tone-cyan',
+      value: alarmCarouselItem.value
+        ? alarmCarouselItem.value.active
+          ? '报警'
+          : '正常'
+        : `${activeAlarmCount.value}`,
+      desc: alarmCarouselItem.value
+        ? alarmCarouselItem.value.name || alarmCarouselItem.value.field
+        : `共 ${allAlarms.value.length} 路`,
+      tone: alarmCarouselItem.value?.active ? 'tone-red' : 'tone-cyan',
     },
     {
-      label: '兜底轮询',
-      value: autoRefresh.value ? `${overviewRefreshMs / 1000}s` : '关闭',
-      desc: 'WebSocket 实时',
-      tone: 'tone-blue',
+      label: '设备状态',
+      value: statusCarouselItem.value ? statusText(statusCarouselItem.value) : '暂无',
+      desc: statusCarouselItem.value
+        ? statusCarouselItem.value.name || statusCarouselItem.value.field
+        : `兜底 ${overviewRefreshMs / 1000}s`,
+      tone:
+        statusCarouselItem.value && isStatusOn(statusCarouselItem.value)
+          ? 'tone-green'
+          : 'tone-amber',
     },
   ]);
 
@@ -275,6 +295,15 @@
   function isPointActive(p: any) {
     if (typeof p?.active === 'boolean') return p.active;
     return Number(p?.engValue || 0) !== 0;
+  }
+
+  function isStatusOn(p: any) {
+    return !isDeviceOffline.value && isPointActive(p);
+  }
+
+  function statusText(p: any) {
+    if (isDeviceOffline.value) return '离线';
+    return p?.stateText || (isPointActive(p) ? '运行' : '停止');
   }
 
   function hasPointValue(p: any) {
@@ -359,9 +388,6 @@
         icon: '🌡',
         value: oilTemp.value,
         unit: oilTemp.unit || '℃',
-        anchor: [505, 320],
-        bend: [690, 210],
-        card: [788, 168],
         tone: cellClass(oilTemp.point),
       },
       {
@@ -369,9 +395,6 @@
         icon: '⚙',
         value: gap.value,
         unit: gap.unit || 'mm',
-        anchor: [522, 172],
-        bend: [686, 228],
-        card: [788, 222],
         tone: cellClass(gap.point),
       },
       {
@@ -379,9 +402,6 @@
         icon: '⚡',
         value: current.value,
         unit: current.unit || 'A',
-        anchor: [208, 300],
-        bend: [676, 292],
-        card: [788, 276],
         tone: 'val-power',
       },
       {
@@ -389,9 +409,6 @@
         icon: '⏱',
         value: runtime.value,
         unit: runtime.unit || 'h',
-        anchor: [392, 404],
-        bend: [688, 350],
-        card: [788, 330],
         tone: '',
       },
       {
@@ -399,9 +416,6 @@
         icon: '●',
         value: runState.value,
         unit: '',
-        anchor: [463, 254],
-        bend: [690, 404],
-        card: [788, 384],
         tone: runState.value === '运行' ? 'val-power' : 'val-low',
       },
     ];
@@ -410,50 +424,76 @@
   // 参数表
   const paramRows = computed(() => {
     const rows: any[] = [];
-    const map: Record<string, any> = {};
-    for (const p of numericPoints.value) {
-      map[(p.field || '').toLowerCase()] = p;
-      map[p.name || ''] = p;
-    }
+    const allPointList = [...numericPoints.value, ...boolPoints.value];
+    const findPoint = (keys: string[]) => {
+      for (const p of allPointList) {
+        if (pointMatches(p, keys)) return p;
+      }
+      return null;
+    };
     const candidates = [
       {
-        label: '主机电流',
-        keys: ['main_current', 'crusher_ampere', '主电机电流', '破碎机电流'],
-        unit: 'A',
+        label: '释放缸压力',
+        keys: ['release_cyl_pressure', 'release_pressure', '释放缸压力'],
+        unit: 'bar',
       },
-      { label: '功率', keys: ['power', '功率'], unit: 'kW' },
       {
-        label: '运行时间',
-        keys: ['run_hours', 'crusher_time_h', '运行时间', '破碎机运行小时'],
-        unit: 'h',
+        label: '锁紧缸压力',
+        keys: ['lock_pressure', 'locking_pressure', '锁紧缸压力'],
+        unit: 'bar',
       },
-      { label: '锁紧缸压力', keys: ['lock_pressure', '锁紧缸压力'], unit: 'bar' },
-      { label: '释放缸压力', keys: ['release_cyl_pressure', '释放缸压力'], unit: 'bar' },
       {
         label: '回油温度',
-        keys: ['lube_return_temp', 'return_oil_temp', '润滑回油温度', '回油温度'],
+        keys: ['lube_return_temp', 'return_oil_temp', 'return_temp', '润滑回油温度', '回油温度'],
         unit: '℃',
       },
       {
         label: '油箱温度',
-        keys: ['lube_tank_temp', 'tank_temp', '润滑油箱温度', '油箱温度'],
+        keys: ['lube_tank_temp', 'tank_temp', 'oil_tank_temp', '润滑油箱温度', '油箱温度'],
         unit: '℃',
       },
-      { label: '前轴承温度', keys: ['front_bearing_temp', '前轴承温度'], unit: '℃' },
-      { label: '后轴承温度', keys: ['rear_bearing_temp', '后轴承温度'], unit: '℃' },
+      {
+        label: '破碎机运行时间',
+        keys: ['run_hours', 'crusher_time_h', 'crusher_runtime', '运行时间', '破碎机运行小时'],
+        unit: 'h',
+      },
+      {
+        label: '排料口尺寸',
+        keys: [
+          'discharge_opening',
+          'discharge_size',
+          'outlet_size',
+          'css',
+          'gap',
+          '排料口',
+          '排矿口',
+          '间隙',
+        ],
+        unit: 'mm',
+      },
+      {
+        label: '进料机运转状态',
+        keys: [
+          'feeder_run',
+          'feeder_running',
+          'feed_run',
+          'feed_running',
+          '进料机运行',
+          '进料机运转',
+        ],
+        unit: '',
+        boolText: true,
+      },
     ];
     for (const c of candidates) {
-      let p: any = null;
-      for (const k of c.keys) {
-        p = map[k.toLowerCase()] || map[k];
-        if (p) break;
-      }
+      const p = findPoint(c.keys);
       if (p && p.engValue != null) {
+        const isBool = c.boolText || p.dataType === 'Bool';
         rows.push({
           label: c.label,
-          value: formatValue(p.engValue),
-          unit: p.unit || c.unit || '',
-          cls: cellClass(p),
+          value: isBool ? statusText(p) : formatValue(p.engValue),
+          unit: isBool ? '' : p.unit || c.unit || '',
+          cls: isBool ? (isStatusOn(p) ? 'val-power' : 'val-low') : cellClass(p),
         });
       }
     }
@@ -474,14 +514,19 @@
   }
 
   // 仪表盘
-  const voltageGaugeRef = ref<HTMLDivElement>();
+  const oilLevelGaugeRef = ref<HTMLDivElement>();
   const currentGaugeRef = ref<HTMLDivElement>();
-  let voltageGauge: echarts.ECharts | null = null;
+  const lubeStatusGaugeRef = ref<HTMLDivElement>();
+  let oilLevelGauge: echarts.ECharts | null = null;
   let currentGauge: echarts.ECharts | null = null;
+  let lubeStatusGauge: echarts.ECharts | null = null;
 
   function ensureGauges() {
-    if (voltageGaugeRef.value && !voltageGauge) voltageGauge = echarts.init(voltageGaugeRef.value);
+    if (oilLevelGaugeRef.value && !oilLevelGauge)
+      oilLevelGauge = echarts.init(oilLevelGaugeRef.value);
     if (currentGaugeRef.value && !currentGauge) currentGauge = echarts.init(currentGaugeRef.value);
+    if (lubeStatusGaugeRef.value && !lubeStatusGauge)
+      lubeStatusGauge = echarts.init(lubeStatusGaugeRef.value);
   }
 
   function gaugeOption(name: string, value: number, max: number, unit: string, color: string) {
@@ -619,19 +664,105 @@
 
   function refreshGauges() {
     ensureGauges();
-    const findVal = (keys: string[]): number => {
-      for (const p of numericPoints.value) {
+    const findPoint = (keys: string[]): any => {
+      for (const p of [...numericPoints.value, ...boolPoints.value]) {
         const fn = (p.field || '').toLowerCase();
         if (keys.some((k) => fn.includes(k.toLowerCase()) || (p.name || '').includes(k))) {
-          return Number(p.engValue ?? 0);
+          return p;
         }
       }
-      return 0;
+      return null;
     };
-    const voltage = findVal(['voltage', 'volt', '电压']);
-    const current = findVal(['main_current', 'crusher_ampere', 'ampere', '电流']);
-    voltageGauge?.setOption(gaugeOption('主机电压', voltage, 500, 'V', '#2ebcff'));
+    const oilLevelPoint = findPoint(['hydraulic_oil_level', 'oil_level', '液压油油位', '油位']);
+    const currentPoint = findPoint(['main_current', 'crusher_ampere', 'ampere', '电流']);
+    const lubeStatusPoint = findPoint([
+      'lube_status',
+      'lubrication_status',
+      'lubricating_oil_status',
+      '润滑油状态',
+      '润滑状态',
+    ]);
+    const oilLevel = normalizePercent(oilLevelPoint?.engValue);
+    const current = Number(currentPoint?.engValue ?? 0);
+    const lubeNormal = lubeStatusPoint ? Number(lubeStatusPoint.engValue || 0) !== 0 : false;
+    const lubeText = isDeviceOffline.value
+      ? '离线'
+      : lubeStatusPoint
+        ? lubeNormal
+          ? '正常'
+          : '异常'
+        : '未知';
+    const lubeColor = isDeviceOffline.value
+      ? '#8ea3ad'
+      : lubeStatusPoint
+        ? lubeNormal
+          ? '#48f5a5'
+          : '#ff5c7a'
+        : '#ffc857';
+
+    oilLevelGauge?.setOption(
+      gaugeOption('液压油油位', oilLevel, 100, '%', oilLevelColor(oilLevel))
+    );
     currentGauge?.setOption(gaugeOption('主机电流', current, 200, 'A', '#4de18c'));
+    lubeStatusGauge?.setOption(statusGaugeOption('润滑油状态', lubeText, lubeColor));
+  }
+
+  function normalizePercent(value: any) {
+    const n = Number(value ?? 0);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n <= 1 ? n * 100 : n));
+  }
+
+  function oilLevelColor(value: number) {
+    if (value <= 20) return '#ff5c7a';
+    if (value >= 80) return '#ffc857';
+    return '#4de5ff';
+  }
+
+  function statusGaugeOption(name: string, text: string, color: string) {
+    const value = text === '正常' ? 1 : text === '异常' ? 0.25 : 0.55;
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { formatter: `${name}<br/>${text}` },
+      series: [
+        {
+          type: 'gauge',
+          radius: '88%',
+          min: 0,
+          max: 1,
+          startAngle: 210,
+          endAngle: -30,
+          progress: {
+            show: true,
+            width: 12,
+            roundCap: true,
+            itemStyle: { color, shadowBlur: 14, shadowColor: color },
+          },
+          axisLine: { lineStyle: { width: 12, color: [[1, 'rgba(77, 229, 255, 0.14)']] } },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          axisLabel: { show: false },
+          pointer: { show: false },
+          anchor: { show: false },
+          title: {
+            color: 'rgba(215, 247, 255, 0.86)',
+            fontSize: 12,
+            fontWeight: 700,
+            offsetCenter: [0, '64%'],
+          },
+          detail: {
+            formatter: () => text,
+            color: '#eaffff',
+            fontSize: 22,
+            fontWeight: 800,
+            offsetCenter: [0, '10%'],
+            textShadowColor: color,
+            textShadowBlur: 14,
+          },
+          data: [{ value, name }],
+        },
+      ],
+    };
   }
 
   // 趋势图
@@ -640,9 +771,138 @@
   let tempChart: echarts.ECharts | null = null;
   let currentChart: echarts.ECharts | null = null;
 
+  const modelCanvasRef = ref<HTMLCanvasElement>();
+  const modelAutoRotate = ref(false);
+  const modelZoomEnabled = ref(false);
+  const gltfLoader = new GLTFLoader();
+  let modelRenderer: THREE.WebGLRenderer | null = null;
+  let modelScene: THREE.Scene | null = null;
+  let modelCamera: THREE.PerspectiveCamera | null = null;
+  let modelControls: OrbitControls | null = null;
+  let activeModel: THREE.Object3D | null = null;
+  let modelFrame = 0;
+  let currentModelUrl = '';
+
+  const deviceModelUrl = computed(() => {
+    const text =
+      `${device.value?.name || ''} ${device.value?.host || ''} ${device.value?.remark || ''}`.toLowerCase();
+    return text.includes('制砂') || text.includes('sand') || text.includes('1263')
+      ? sandMakerModelUrl
+      : hp300ModelUrl;
+  });
+
   function ensureCharts() {
     if (tempChartRef.value && !tempChart) tempChart = echarts.init(tempChartRef.value);
     if (currentChartRef.value && !currentChart) currentChart = echarts.init(currentChartRef.value);
+  }
+
+  function ensureModelViewer() {
+    if (!modelCanvasRef.value || modelRenderer) return;
+    modelScene = new THREE.Scene();
+    modelScene.add(new THREE.HemisphereLight(0xdff8ff, 0x06111a, 2.4));
+    const keyLight = new THREE.DirectionalLight(0x7deaff, 3.2);
+    keyLight.position.set(4, 6, 5);
+    modelScene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x48f5a5, 1.6);
+    rimLight.position.set(-5, 3, -4);
+    modelScene.add(rimLight);
+
+    modelCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000);
+    modelCamera.position.set(2.2, 1.7, 4.4);
+    modelRenderer = new THREE.WebGLRenderer({
+      canvas: modelCanvasRef.value,
+      alpha: true,
+      antialias: true,
+    });
+    modelRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    modelRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    modelControls = new OrbitControls(modelCamera, modelCanvasRef.value);
+    modelControls.enableDamping = true;
+    modelControls.autoRotate = modelAutoRotate.value;
+    modelControls.autoRotateSpeed = 0.45;
+    modelControls.enableZoom = modelZoomEnabled.value;
+    modelControls.enablePan = false;
+    modelControls.target.set(0, 0, 0);
+    modelControls.minDistance = 1.8;
+    modelControls.maxDistance = 8;
+    resizeModelViewer();
+    animateModel();
+  }
+
+  function toggleModelRotate() {
+    modelAutoRotate.value = !modelAutoRotate.value;
+    if (modelControls) modelControls.autoRotate = modelAutoRotate.value;
+  }
+
+  function setModelZoomEnabled(enabled: boolean) {
+    modelZoomEnabled.value = enabled;
+    if (modelControls) modelControls.enableZoom = enabled;
+  }
+
+  async function loadDeviceModel() {
+    ensureModelViewer();
+    if (!modelScene || !deviceModelUrl.value || currentModelUrl === deviceModelUrl.value) return;
+    currentModelUrl = deviceModelUrl.value;
+    if (activeModel) {
+      modelScene.remove(activeModel);
+      activeModel.traverse((child: any) => {
+        child.geometry?.dispose?.();
+        child.material?.dispose?.();
+      });
+      activeModel = null;
+    }
+    const gltf = await gltfLoader.loadAsync(deviceModelUrl.value);
+    activeModel = gltf.scene;
+    fitModel(activeModel);
+    modelScene.add(activeModel);
+  }
+
+  function fitModel(model: THREE.Object3D) {
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center);
+    const scale = 2.7 / Math.max(size.x, size.y, size.z, 1);
+    model.scale.setScalar(scale);
+    model.rotation.y = -Math.PI / 8;
+    model.position.y = -0.08;
+    model.position.x = -0.18;
+    model.traverse((child: any) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+  }
+
+  function resizeModelViewer() {
+    if (!modelCanvasRef.value || !modelRenderer || !modelCamera) return;
+    const rect = modelCanvasRef.value.getBoundingClientRect();
+    const width = Math.max(1, rect.width);
+    const height = Math.max(1, rect.height);
+    modelRenderer.setSize(width, height, false);
+    modelCamera.aspect = width / height;
+    modelCamera.updateProjectionMatrix();
+  }
+
+  function animateModel() {
+    modelFrame = requestAnimationFrame(animateModel);
+    if (modelControls) modelControls.autoRotate = modelAutoRotate.value;
+    if (modelControls) modelControls.enableZoom = modelZoomEnabled.value;
+    modelControls?.update();
+    if (modelRenderer && modelScene && modelCamera) modelRenderer.render(modelScene, modelCamera);
+  }
+
+  function disposeModelViewer() {
+    cancelAnimationFrame(modelFrame);
+    modelControls?.dispose();
+    if (activeModel) {
+      activeModel.traverse((child: any) => {
+        child.geometry?.dispose?.();
+        child.material?.dispose?.();
+      });
+    }
+    modelRenderer?.dispose();
   }
 
   function lineOption(legend: string[], xAxis: string[], series: any[], palette: string[]) {
@@ -725,6 +985,9 @@
   onMounted(async () => {
     await loadMines();
     startClock();
+    startCarousel();
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    window.addEventListener('resize', resizeModelViewer);
     addOnMessage(SocketEnum.EventPlcRealtime, onPlcRealtimeMessage);
     if (autoRefresh.value) {
       refreshTimer = setInterval(() => loadOverview(false), overviewRefreshMs);
@@ -775,6 +1038,7 @@
     ensureGauges();
     ensureCharts();
     await loadCharts(id);
+    await loadDeviceModel();
     refreshGauges();
   }
 
@@ -791,6 +1055,7 @@
         await nextTick();
         ensureGauges();
         ensureCharts();
+        await loadDeviceModel();
       }
       refreshGauges();
     } finally {
@@ -870,23 +1135,74 @@
     clockTimer = setInterval(tick, 1000);
   }
 
+  function startCarousel() {
+    carouselTimer = setInterval(() => {
+      if (allAlarms.value.length > 0) {
+        alarmCarouselIndex.value = (alarmCarouselIndex.value + 1) % allAlarms.value.length;
+      }
+      if (statusList.value.length > 0) {
+        statusCarouselIndex.value = (statusCarouselIndex.value + 1) % statusList.value.length;
+      }
+    }, 3000);
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await screenRef.value?.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.log('[PLC Dashboard] fullscreen toggle failed:', err);
+    }
+  }
+
+  function onFullscreenChange() {
+    isFullscreen.value = !!document.fullscreenElement;
+    setTimeout(() => {
+      oilLevelGauge?.resize();
+      currentGauge?.resize();
+      lubeStatusGauge?.resize();
+      tempChart?.resize();
+      currentChart?.resize();
+      resizeModelViewer();
+    }, 120);
+  }
+
   watch(
-    () => [tempChartRef.value, currentChartRef.value, voltageGaugeRef.value, currentGaugeRef.value],
+    () => [
+      tempChartRef.value,
+      currentChartRef.value,
+      oilLevelGaugeRef.value,
+      currentGaugeRef.value,
+      lubeStatusGaugeRef.value,
+    ],
     () => {
       ensureGauges();
       ensureCharts();
+      ensureModelViewer();
     }
   );
 
+  watch(deviceModelUrl, () => {
+    loadDeviceModel();
+  });
+
   onUnmounted(() => {
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
+    window.removeEventListener('resize', resizeModelViewer);
     removeOnMessage(SocketEnum.EventPlcRealtime);
     if (clockTimer) clearInterval(clockTimer);
     if (refreshTimer) clearInterval(refreshTimer);
     if (chartTimer) clearInterval(chartTimer);
-    voltageGauge?.dispose();
+    if (carouselTimer) clearInterval(carouselTimer);
+    oilLevelGauge?.dispose();
     currentGauge?.dispose();
+    lubeStatusGauge?.dispose();
     tempChart?.dispose();
     currentChart?.dispose();
+    disposeModelViewer();
   });
 </script>
 
@@ -1097,6 +1413,10 @@
       0 10px 24px rgba(36, 72, 94, 0.08);
     overflow: hidden;
   }
+  .gauge-wide {
+    grid-column: 1 / -1;
+    height: 128px;
+  }
   .gauge::before,
   .gauge::after {
     content: '';
@@ -1274,40 +1594,21 @@
     );
     z-index: 4;
   }
-  .machine-bg {
+  .machine-model {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: 48% center;
     z-index: 1;
+    cursor: grab;
+    outline: none;
   }
-  .guide-layer {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2;
-    pointer-events: none;
-  }
-  .guide-line {
-    fill: none;
-    stroke: rgba(24, 110, 170, 0.86);
-    stroke-width: 1.8;
-    stroke-dasharray: 7 6;
-    stroke-linecap: round;
-    animation: guideFlow 2.8s linear infinite;
-  }
-  .travel-dot {
-    fill: #67eaff;
-    stroke: rgba(255, 255, 255, 0.9);
-    stroke-width: 1.6;
-    filter: drop-shadow(0 0 8px rgba(55, 213, 255, 0.95));
+  .machine-model:active {
+    cursor: grabbing;
   }
   .readout-panel {
     position: absolute;
-    right: 0;
+    right: 12px;
     top: 118px;
     z-index: 3;
     width: clamp(174px, 21cqw, 214px);
@@ -1322,7 +1623,7 @@
   .readout-panel::after {
     content: '';
     position: absolute;
-    inset: -8px -32px -8px -10px;
+    inset: -8px -10px -8px -10px;
     z-index: -1;
     border-radius: 18px;
     background: #303b45;
@@ -1409,12 +1710,30 @@
     box-shadow: 0 0 12px #1fd17a;
     animation: dotPulse 1.4s ease-in-out infinite;
   }
-
-  @keyframes guideFlow {
-    to {
-      stroke-dashoffset: -22;
-    }
+  .model-rotate-btn {
+    position: absolute;
+    left: 18px;
+    bottom: 20px;
+    z-index: 4;
+    height: 30px;
+    padding: 0 13px;
+    color: #d7f7ff;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid rgba(77, 229, 255, 0.3);
+    border-radius: 999px;
+    background: rgba(5, 15, 23, 0.72);
+    box-shadow:
+      inset 0 0 18px rgba(77, 229, 255, 0.08),
+      0 12px 24px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
   }
+  .model-rotate-btn:hover {
+    color: #ffffff;
+    border-color: rgba(77, 229, 255, 0.72);
+    background: rgba(77, 229, 255, 0.16);
+  }
+
   @keyframes dotPulse {
     0%,
     100% {
@@ -1731,6 +2050,18 @@
       inset 0 0 18px rgba(72, 245, 165, 0.08),
       0 0 18px rgba(72, 245, 165, 0.08);
   }
+  .fullscreen-btn {
+    min-width: 74px;
+    color: #d7f7ff;
+    border-color: rgba(77, 229, 255, 0.34);
+    background: rgba(5, 15, 23, 0.62);
+    box-shadow: inset 0 0 18px rgba(77, 229, 255, 0.08);
+  }
+  .fullscreen-btn:hover {
+    color: #ffffff;
+    border-color: rgba(77, 229, 255, 0.78);
+    background: rgba(77, 229, 255, 0.14);
+  }
   :deep(.n-base-selection-label) {
     background: linear-gradient(180deg, rgba(10, 35, 50, 0.96), rgba(4, 13, 21, 0.96)) !important;
   }
@@ -1764,6 +2095,19 @@
     background: linear-gradient(90deg, transparent, currentColor, transparent);
     opacity: 0.58;
   }
+  .warehouse-chip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 0 38%,
+      rgba(255, 255, 255, 0.18) 48%,
+      transparent 58% 100%
+    );
+    transform: translateX(-120%);
+    animation: chipScan 3s ease-in-out infinite;
+  }
   .warehouse-chip .chip-label {
     display: block;
     color: rgba(214, 247, 255, 0.6);
@@ -1778,6 +2122,9 @@
     font-size: 26px;
     line-height: 1;
   }
+  .chip-value {
+    animation: chipRise 0.58s cubic-bezier(0.2, 0.86, 0.28, 1.08);
+  }
   .warehouse-chip small {
     display: block;
     margin-top: 5px;
@@ -1785,6 +2132,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .chip-desc {
+    animation: chipRise 0.5s ease both;
   }
   .tone-cyan {
     color: var(--warehouse-cyan);
@@ -1800,6 +2150,28 @@
   }
   .tone-red {
     color: var(--warehouse-red);
+  }
+
+  @keyframes chipRise {
+    0% {
+      opacity: 0;
+      transform: translateY(18px);
+      filter: blur(4px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
+  @keyframes chipScan {
+    0% {
+      transform: translateX(-120%);
+    }
+    45%,
+    100% {
+      transform: translateX(120%);
+    }
   }
 
   .hmi-body {
@@ -1907,10 +2279,8 @@
     background: radial-gradient(circle at 45% 40%, rgba(77, 229, 255, 0.16), transparent 34%),
       linear-gradient(180deg, #07131e 0%, #0a1722 52%, #050c13 100%);
   }
-  .machine-bg {
-    filter: saturate(1.15) contrast(1.1) brightness(0.76)
-      drop-shadow(0 18px 38px rgba(0, 0, 0, 0.28));
-    opacity: 0.9;
+  .machine-model {
+    filter: drop-shadow(0 18px 38px rgba(0, 0, 0, 0.28));
   }
   .machine-stage::after {
     background: linear-gradient(
@@ -1921,14 +2291,6 @@
         rgba(77, 229, 255, 0.12)
       ),
       radial-gradient(circle at 50% 50%, transparent 0 44%, rgba(4, 10, 16, 0.48) 88%);
-  }
-  .guide-line {
-    stroke: rgba(77, 229, 255, 0.88);
-    stroke-width: 2.2;
-  }
-  .travel-dot {
-    fill: var(--warehouse-green);
-    filter: drop-shadow(0 0 10px rgba(72, 245, 165, 0.95));
   }
   .readout-panel,
   .readout-panel::after {
@@ -2046,12 +2408,6 @@
     .machine-stage {
       min-height: 360px;
     }
-    .machine-bg {
-      object-position: 42% center;
-    }
-    .guide-layer {
-      opacity: 0.72;
-    }
     .readout-panel {
       right: 10px;
       top: 112px;
@@ -2082,9 +2438,6 @@
       top: 104px;
       width: 148px;
       padding: 8px;
-    }
-    .guide-layer {
-      display: none;
     }
     .live-badge {
       right: 10px;
