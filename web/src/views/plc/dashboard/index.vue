@@ -1069,8 +1069,8 @@
     overflow: hidden;
   }
   .hmi-screen:fullscreen {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
     width: 100vw;
     height: 100vh;
     min-height: 100vh;
@@ -1081,19 +1081,59 @@
   .hmi-screen:fullscreen .hmi-top {
     flex-shrink: 0;
   }
+  .hmi-screen:fullscreen .warehouse-strip {
+    flex-shrink: 0;
+  }
   .hmi-screen:fullscreen .hmi-body {
-    flex: 1;
+    grid-template-columns: clamp(240px, 22vw, 300px) minmax(0, 1fr) clamp(240px, 22vw, 300px);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .hmi-screen:fullscreen .col {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .hmi-screen:fullscreen .col-mid {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .hmi-screen:fullscreen .block-device,
+  .hmi-screen:fullscreen .device-canvas,
+  .hmi-screen:fullscreen .machine-stage {
+    min-width: 0;
     min-height: 0;
   }
   .hmi-screen:fullscreen .block-device {
-    min-height: 0;
-    height: 100%;
+    flex: 1 1 auto;
+    height: auto;
+    overflow: hidden;
   }
-  .hmi-screen:fullscreen .device-canvas,
+  .hmi-screen:fullscreen .device-canvas {
+    flex: 1 1 auto;
+    height: auto;
+    overflow: hidden;
+  }
   .hmi-screen:fullscreen .machine-stage {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: clamp(320px, 52vh, 620px);
+    height: auto;
+  }
+  .hmi-screen:fullscreen .bottom-charts {
+    flex: 0 0 auto;
     min-height: 0;
-    height: 100%;
+  }
+  .hmi-screen:fullscreen .bottom-charts .chart-area {
+    height: clamp(140px, 17vh, 190px);
+  }
+  @media screen and (max-height: 820px) {
+    .hmi-screen:fullscreen .machine-stage {
+      min-height: 300px;
+    }
+    .hmi-screen:fullscreen .bottom-charts .chart-area {
+      height: 128px;
+    }
   }
   .hmi-screen::before {
     content: '';
