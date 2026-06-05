@@ -86,14 +86,7 @@
           </div>
           <div class="device-canvas">
             <div class="machine-stage">
-              <canvas
-                ref="modelCanvasRef"
-                class="machine-model"
-                aria-label="设备三维模型"
-                @mouseenter="setModelZoomEnabled(true)"
-                @mouseleave="setModelZoomEnabled(false)"
-                @wheel.stop
-              ></canvas>
+              <img class="machine-bg" :src="deviceImageUrl" alt="设备实时监控图" />
               <div class="readout-panel">
                 <div
                   v-for="item in monitorReadouts"
@@ -110,9 +103,6 @@
                 <span></span>
                 数据实时更新
               </div>
-              <button class="model-rotate-btn" type="button" @click="toggleModelRotate">
-                {{ modelAutoRotate ? '停止旋转' : '旋转模型' }}
-              </button>
             </div>
           </div>
         </div>
@@ -135,7 +125,12 @@
         <div class="block">
           <div class="block-title">设备状态</div>
           <div class="status-list">
-            <div v-for="s in statusList" :key="s.field" class="status-row">
+            <div
+              v-for="(s, idx) in statusList"
+              :key="s.field"
+              class="status-row"
+              :class="{ 'is-active': statusCarouselIndex % statusList.length === idx }"
+            >
               <span class="status-led" :class="isStatusOn(s) ? 'led-on' : 'led-off'"></span>
               <span class="status-name">{{ s.name || s.field }}</span>
               <span class="status-text" :class="isStatusOn(s) ? 'txt-on' : 'txt-off'">
@@ -153,16 +148,20 @@
           </div>
           <div class="alarm-list">
             <div
-              v-for="a in allAlarms"
+              v-for="(a, idx) in activeAlarms"
               :key="a.pointId"
               class="alarm-row"
-              :class="{ 'alarm-on': a.active, 'alarm-off': !a.active }"
+              :class="{
+                'alarm-on': a.active,
+                'alarm-off': !a.active,
+                'is-active': alarmCarouselIndex % activeAlarms.length === idx,
+              }"
             >
               <span class="alarm-led"></span>
               <span class="alarm-name" :title="a.field">{{ a.name || a.field }}</span>
               <span class="alarm-tag">{{ a.active ? '报警' : '正常' }}</span>
             </div>
-            <div v-if="allAlarms.length === 0" class="alarm-empty">无报警点位</div>
+            <div v-if="activeAlarms.length === 0" class="alarm-empty">无</div>
           </div>
         </div>
       </div>
@@ -173,15 +172,12 @@
 <script lang="ts" setup>
   import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
   import * as echarts from 'echarts';
-  import * as THREE from 'three';
-  import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
   import { MineOptions, DeviceList, Overview } from '@/api/plc';
   import { http } from '@/utils/http/axios';
   import { SocketEnum } from '@/enums/socketEnum';
   import { addOnMessage, removeOnMessage, WebSocketMessage } from '@/utils/websocket';
-  import hp300ModelUrl from '@/assets/models/zxhp300.glb?url';
-  import sandMakerModelUrl from '@/assets/models/sand-maker-1263.glb?url';
+  import coneCrusherImg from '@/assets/images/cone-crusher.jpg';
+  import sandMakerImg from '@/assets/images/sand-maker.png';
 
   const mineId = ref<number | null>(null);
   const deviceId = ref<number | null>(null);
@@ -209,6 +205,7 @@
   const numericPoints = computed(() => points.value.filter((p) => p.dataType !== 'Bool'));
   const boolPoints = computed(() => points.value.filter((p) => p.dataType === 'Bool'));
   const statusList = computed(() => boolPoints.value);
+  const activeAlarms = computed(() => allAlarms.value.filter((a) => a.active));
   const alarms = computed(() => allAlarms.value.filter((a) => a.active));
   const activeAlarmCount = computed(() => alarms.value.length);
   const firstAlarm = computed(() => alarms.value[0]);
@@ -400,7 +397,9 @@
       {
         label: '电流',
         icon: '⚡',
-        value: current.value,
+        value: current.point
+          ? Math.round(Number(current.point.engValue)).toString()
+          : current.value,
         unit: current.unit || 'A',
         tone: 'val-power',
       },
@@ -446,11 +445,13 @@
         label: '回油温度',
         keys: ['lube_return_temp', 'return_oil_temp', 'return_temp', '润滑回油温度', '回油温度'],
         unit: '℃',
+        noDecimal: true,
       },
       {
         label: '油箱温度',
         keys: ['lube_tank_temp', 'tank_temp', 'oil_tank_temp', '润滑油箱温度', '油箱温度'],
         unit: '℃',
+        noDecimal: true,
       },
       {
         label: '破碎机运行时间',
@@ -491,7 +492,11 @@
         const isBool = c.boolText || p.dataType === 'Bool';
         rows.push({
           label: c.label,
-          value: isBool ? statusText(p) : formatValue(p.engValue),
+          value: isBool
+            ? statusText(p)
+            : c.noDecimal
+              ? Math.round(Number(p.engValue)).toString()
+              : formatValue(p.engValue),
           unit: isBool ? '' : p.unit || c.unit || '',
           cls: isBool ? (isStatusOn(p) ? 'val-power' : 'val-low') : cellClass(p),
         });
@@ -529,28 +534,31 @@
       lubeStatusGauge = echarts.init(lubeStatusGaugeRef.value);
   }
 
-  function gaugeOption(name: string, value: number, max: number, unit: string, color: string) {
+  function gaugeOption(
+    name: string,
+    value: number,
+    max: number,
+    unit: string,
+    color: string,
+    integer = false
+  ) {
     const safeValue = Math.max(0, Math.min(max, Number(value || 0)));
+    const displayVal = integer ? Math.round(safeValue) : Number(safeValue.toFixed(1));
     return {
       backgroundColor: 'transparent',
       tooltip: {
-        formatter: `${name}<br/>${safeValue.toFixed(2)}${unit}`,
-        backgroundColor: 'rgba(18, 30, 42, 0.92)',
-        borderColor: 'rgba(63, 214, 255, 0.35)',
-        textStyle: { color: '#e9f7ff' },
+        formatter: `${name}<br/>${displayVal}${unit}`,
       },
       graphic: [
         {
-          type: 'circle',
+          type: 'text',
           left: 'center',
-          top: 'middle',
-          shape: { r: 46 },
+          top: '38%',
           style: {
-            fill: 'rgba(28, 52, 70, 0.35)',
-            stroke: 'rgba(63, 214, 255, 0.18)',
-            lineWidth: 1,
-            shadowBlur: 18,
-            shadowColor: 'rgba(63, 214, 255, 0.18)',
+            text: '▶',
+            font: 'bold 22px sans-serif',
+            fill: '#f5a623',
+            textAlign: 'center',
           },
           silent: true,
         },
@@ -558,105 +566,45 @@
       series: [
         {
           type: 'gauge',
-          radius: '92%',
+          radius: '88%',
           min: 0,
           max,
-          splitNumber: 4,
           startAngle: 220,
           endAngle: -40,
           progress: {
             show: true,
             roundCap: true,
-            width: 10,
-            itemStyle: {
-              color: {
-                type: 'linear',
-                x: 0,
-                y: 0,
-                x2: 1,
-                y2: 0,
-                colorStops: [
-                  { offset: 0, color: '#37d5ff' },
-                  { offset: 0.55, color },
-                  { offset: 1, color: '#4de18c' },
-                ],
-              },
-              shadowBlur: 14,
-              shadowColor: color,
-            },
+            width: 14,
+            itemStyle: { color },
           },
           axisLine: {
+            roundCap: true,
             lineStyle: {
-              width: 10,
-              color: [[1, 'rgba(77, 229, 255, 0.16)']],
+              width: 14,
+              color: [[1, '#e8edf2']],
             },
           },
-          axisTick: {
-            distance: -16,
-            length: 4,
-            lineStyle: { color: 'rgba(215, 247, 255, 0.72)', width: 1 },
-          },
-          splitLine: {
-            distance: -18,
-            length: 10,
-            lineStyle: { color: 'rgba(77, 229, 255, 0.86)', width: 1.4 },
-          },
-          axisLabel: { color: 'rgba(215, 247, 255, 0.78)', distance: 8, fontSize: 9 },
-          pointer: {
-            icon: 'path://M-3,0 L0,-62 L3,0 Z',
-            length: '58%',
-            width: 8,
-            itemStyle: {
-              color: '#e9fbff',
-              shadowBlur: 10,
-              shadowColor: color,
-            },
-          },
-          anchor: {
-            show: true,
-            size: 15,
-            itemStyle: {
-              color: '#1f394d',
-              borderColor: '#37d5ff',
-              borderWidth: 2,
-              shadowBlur: 12,
-              shadowColor: 'rgba(55, 213, 255, 0.7)',
-            },
-          },
-          title: {
-            show: true,
-            color: 'rgba(215, 247, 255, 0.86)',
-            fontSize: 12,
-            fontWeight: 700,
-            offsetCenter: [0, '72%'],
-          },
-          detail: {
-            valueAnimation: true,
-            formatter: `{value}${unit}`,
-            color: '#eaffff',
-            fontSize: 20,
-            offsetCenter: [0, '42%'],
-            fontWeight: 700,
-            textShadowColor: color,
-            textShadowBlur: 12,
-          },
-          data: [{ value: Number(safeValue.toFixed(2)), name }],
-        },
-        {
-          type: 'gauge',
-          radius: '66%',
-          min: 0,
-          max,
-          startAngle: 220,
-          endAngle: -40,
-          axisLine: { lineStyle: { width: 1, color: [[1, 'rgba(77, 229, 255, 0.24)']] } },
           axisTick: { show: false },
           splitLine: { show: false },
           axisLabel: { show: false },
           pointer: { show: false },
           anchor: { show: false },
-          detail: { show: false },
-          title: { show: false },
+          title: {
+            show: true,
+            color: '#5a7a8a',
+            fontSize: 12,
+            fontWeight: 600,
+            offsetCenter: [0, '78%'],
+          },
+          detail: {
+            valueAnimation: true,
+            formatter: `{value}${unit}`,
+            color: '#1a2e3a',
+            fontSize: 22,
+            fontWeight: 700,
+            offsetCenter: [0, '44%'],
+          },
+          data: [{ value: displayVal, name }],
         },
       ],
     };
@@ -693,17 +641,15 @@
           : '异常'
         : '未知';
     const lubeColor = isDeviceOffline.value
-      ? '#8ea3ad'
+      ? '#b0bec5'
       : lubeStatusPoint
         ? lubeNormal
-          ? '#48f5a5'
-          : '#ff5c7a'
-        : '#ffc857';
+          ? '#1890ff'
+          : '#ff4d4f'
+        : '#b0bec5';
 
-    oilLevelGauge?.setOption(
-      gaugeOption('液压油油位', oilLevel, 100, '%', oilLevelColor(oilLevel))
-    );
-    currentGauge?.setOption(gaugeOption('主机电流', current, 200, 'A', '#4de18c'));
+    oilLevelGauge?.setOption(gaugeOption('液压油油位', oilLevel, 100, '%', '#f5a623'));
+    currentGauge?.setOption(gaugeOption('主机电流', current, 200, 'A', '#1890ff', true));
     lubeStatusGauge?.setOption(statusGaugeOption('润滑油状态', lubeText, lubeColor));
   }
 
@@ -713,51 +659,64 @@
     return Math.max(0, Math.min(100, n <= 1 ? n * 100 : n));
   }
 
-  function oilLevelColor(value: number) {
-    if (value <= 20) return '#ff5c7a';
-    if (value >= 80) return '#ffc857';
-    return '#4de5ff';
-  }
-
   function statusGaugeOption(name: string, text: string, color: string) {
     const value = text === '正常' ? 1 : text === '异常' ? 0.25 : 0.55;
     return {
       backgroundColor: 'transparent',
       tooltip: { formatter: `${name}<br/>${text}` },
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: '34%',
+          style: {
+            text: '▶',
+            font: 'bold 22px sans-serif',
+            fill: '#f5a623',
+            textAlign: 'center',
+          },
+          silent: true,
+        },
+      ],
       series: [
         {
           type: 'gauge',
           radius: '88%',
           min: 0,
           max: 1,
-          startAngle: 210,
-          endAngle: -30,
+          startAngle: 220,
+          endAngle: -40,
           progress: {
             show: true,
-            width: 12,
             roundCap: true,
-            itemStyle: { color, shadowBlur: 14, shadowColor: color },
+            width: 14,
+            itemStyle: { color },
           },
-          axisLine: { lineStyle: { width: 12, color: [[1, 'rgba(77, 229, 255, 0.14)']] } },
+          axisLine: {
+            roundCap: true,
+            lineStyle: {
+              width: 14,
+              color: [[1, '#e8edf2']],
+            },
+          },
           axisTick: { show: false },
           splitLine: { show: false },
           axisLabel: { show: false },
           pointer: { show: false },
           anchor: { show: false },
           title: {
-            color: 'rgba(215, 247, 255, 0.86)',
+            show: true,
+            color: '#5a7a8a',
             fontSize: 12,
-            fontWeight: 700,
-            offsetCenter: [0, '64%'],
+            fontWeight: 600,
+            offsetCenter: [0, '72%'],
           },
           detail: {
             formatter: () => text,
-            color: '#eaffff',
+            color: '#1a2e3a',
             fontSize: 22,
-            fontWeight: 800,
-            offsetCenter: [0, '10%'],
-            textShadowColor: color,
-            textShadowBlur: 14,
+            fontWeight: 700,
+            offsetCenter: [0, '36%'],
           },
           data: [{ value, name }],
         },
@@ -771,24 +730,12 @@
   let tempChart: echarts.ECharts | null = null;
   let currentChart: echarts.ECharts | null = null;
 
-  const modelCanvasRef = ref<HTMLCanvasElement>();
-  const modelAutoRotate = ref(false);
-  const modelZoomEnabled = ref(false);
-  const gltfLoader = new GLTFLoader();
-  let modelRenderer: THREE.WebGLRenderer | null = null;
-  let modelScene: THREE.Scene | null = null;
-  let modelCamera: THREE.PerspectiveCamera | null = null;
-  let modelControls: OrbitControls | null = null;
-  let activeModel: THREE.Object3D | null = null;
-  let modelFrame = 0;
-  let currentModelUrl = '';
-
-  const deviceModelUrl = computed(() => {
+  const deviceImageUrl = computed(() => {
     const text =
       `${device.value?.name || ''} ${device.value?.host || ''} ${device.value?.remark || ''}`.toLowerCase();
     return text.includes('制砂') || text.includes('sand') || text.includes('1263')
-      ? sandMakerModelUrl
-      : hp300ModelUrl;
+      ? sandMakerImg
+      : coneCrusherImg;
   });
 
   function ensureCharts() {
@@ -796,141 +743,38 @@
     if (currentChartRef.value && !currentChart) currentChart = echarts.init(currentChartRef.value);
   }
 
-  function ensureModelViewer() {
-    if (!modelCanvasRef.value || modelRenderer) return;
-    modelScene = new THREE.Scene();
-    modelScene.add(new THREE.HemisphereLight(0xdff8ff, 0x06111a, 2.4));
-    const keyLight = new THREE.DirectionalLight(0x7deaff, 3.2);
-    keyLight.position.set(4, 6, 5);
-    modelScene.add(keyLight);
-    const rimLight = new THREE.DirectionalLight(0x48f5a5, 1.6);
-    rimLight.position.set(-5, 3, -4);
-    modelScene.add(rimLight);
-
-    modelCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000);
-    modelCamera.position.set(2.2, 1.7, 4.4);
-    modelRenderer = new THREE.WebGLRenderer({
-      canvas: modelCanvasRef.value,
-      alpha: true,
-      antialias: true,
-    });
-    modelRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    modelRenderer.outputColorSpace = THREE.SRGBColorSpace;
-    modelControls = new OrbitControls(modelCamera, modelCanvasRef.value);
-    modelControls.enableDamping = true;
-    modelControls.autoRotate = modelAutoRotate.value;
-    modelControls.autoRotateSpeed = 0.45;
-    modelControls.enableZoom = modelZoomEnabled.value;
-    modelControls.enablePan = false;
-    modelControls.target.set(0, 0, 0);
-    modelControls.minDistance = 1.8;
-    modelControls.maxDistance = 8;
-    resizeModelViewer();
-    animateModel();
-  }
-
-  function toggleModelRotate() {
-    modelAutoRotate.value = !modelAutoRotate.value;
-    if (modelControls) modelControls.autoRotate = modelAutoRotate.value;
-  }
-
-  function setModelZoomEnabled(enabled: boolean) {
-    modelZoomEnabled.value = enabled;
-    if (modelControls) modelControls.enableZoom = enabled;
-  }
-
-  async function loadDeviceModel() {
-    ensureModelViewer();
-    if (!modelScene || !deviceModelUrl.value || currentModelUrl === deviceModelUrl.value) return;
-    currentModelUrl = deviceModelUrl.value;
-    if (activeModel) {
-      modelScene.remove(activeModel);
-      activeModel.traverse((child: any) => {
-        child.geometry?.dispose?.();
-        child.material?.dispose?.();
-      });
-      activeModel = null;
-    }
-    const gltf = await gltfLoader.loadAsync(deviceModelUrl.value);
-    activeModel = gltf.scene;
-    fitModel(activeModel);
-    modelScene.add(activeModel);
-  }
-
-  function fitModel(model: THREE.Object3D) {
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    model.position.sub(center);
-    const scale = 2.7 / Math.max(size.x, size.y, size.z, 1);
-    model.scale.setScalar(scale);
-    model.rotation.y = -Math.PI / 8;
-    model.position.y = -0.08;
-    model.position.x = -0.18;
-    model.traverse((child: any) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
-  }
-
-  function resizeModelViewer() {
-    if (!modelCanvasRef.value || !modelRenderer || !modelCamera) return;
-    const rect = modelCanvasRef.value.getBoundingClientRect();
-    const width = Math.max(1, rect.width);
-    const height = Math.max(1, rect.height);
-    modelRenderer.setSize(width, height, false);
-    modelCamera.aspect = width / height;
-    modelCamera.updateProjectionMatrix();
-  }
-
-  function animateModel() {
-    modelFrame = requestAnimationFrame(animateModel);
-    if (modelControls) modelControls.autoRotate = modelAutoRotate.value;
-    if (modelControls) modelControls.enableZoom = modelZoomEnabled.value;
-    modelControls?.update();
-    if (modelRenderer && modelScene && modelCamera) modelRenderer.render(modelScene, modelCamera);
-  }
-
-  function disposeModelViewer() {
-    cancelAnimationFrame(modelFrame);
-    modelControls?.dispose();
-    if (activeModel) {
-      activeModel.traverse((child: any) => {
-        child.geometry?.dispose?.();
-        child.material?.dispose?.();
-      });
-    }
-    modelRenderer?.dispose();
-  }
-
   function lineOption(legend: string[], xAxis: string[], series: any[], palette: string[]) {
     return {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'axis',
-        backgroundColor: 'rgba(18, 30, 42, 0.92)',
-        borderColor: 'rgba(63, 214, 255, 0.3)',
-        textStyle: { color: '#e9f7ff' },
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        borderColor: 'rgba(24, 144, 255, 0.2)',
+        textStyle: { color: '#1a2e3a' },
+        extraCssText: 'box-shadow: 0 4px 16px rgba(24,144,255,0.12);',
+        formatter: (params: any[]) =>
+          params
+            .map((p: any) => `${p.marker}${p.seriesName}：<b>${Math.round(p.value)}</b>`)
+            .join('<br/>'),
       },
       legend: {
         data: legend,
-        textStyle: { color: 'rgba(215, 247, 255, 0.68)', fontSize: 11 },
+        textStyle: { color: '#5a7a8a', fontSize: 11 },
         top: 4,
       },
       grid: { left: 50, right: 16, top: 32, bottom: 28 },
       xAxis: {
         type: 'category',
         data: xAxis,
-        axisLine: { lineStyle: { color: 'rgba(77, 229, 255, 0.2)' } },
-        axisLabel: { color: 'rgba(215, 247, 255, 0.5)', fontSize: 9 },
+        axisLine: { lineStyle: { color: 'rgba(24, 144, 255, 0.15)' } },
+        axisLabel: { color: '#9ab0bc', fontSize: 9 },
+        splitLine: { show: false },
       },
       yAxis: {
         type: 'value',
-        axisLine: { lineStyle: { color: 'rgba(77, 229, 255, 0.2)' } },
-        splitLine: { lineStyle: { color: 'rgba(77, 229, 255, 0.1)' } },
-        axisLabel: { color: 'rgba(215, 247, 255, 0.5)', fontSize: 9 },
+        axisLine: { show: false },
+        splitLine: { lineStyle: { color: 'rgba(24, 144, 255, 0.08)', type: 'dashed' } },
+        axisLabel: { color: '#9ab0bc', fontSize: 9 },
       },
       series: (series || []).map((s: any, i: number) => ({
         name: s.name,
@@ -958,9 +802,9 @@
       });
       tempChart?.setOption(
         lineOption(tempRes?.legend || [], tempRes?.xAxis || [], tempRes?.series || [], [
-          '#4de5ff',
-          '#ffc857',
-          '#ff5c7a',
+          '#1890ff',
+          '#f5a623',
+          '#ff4d4f',
         ]),
         true
       );
@@ -973,8 +817,8 @@
       });
       currentChart?.setOption(
         lineOption(curRes?.legend || [], curRes?.xAxis || [], curRes?.series || [], [
-          '#3b82f6',
-          '#48f5a5',
+          '#1890ff',
+          '#52c41a',
         ]),
         true
       );
@@ -987,7 +831,6 @@
     startClock();
     startCarousel();
     document.addEventListener('fullscreenchange', onFullscreenChange);
-    window.addEventListener('resize', resizeModelViewer);
     addOnMessage(SocketEnum.EventPlcRealtime, onPlcRealtimeMessage);
     if (autoRefresh.value) {
       refreshTimer = setInterval(() => loadOverview(false), overviewRefreshMs);
@@ -1038,7 +881,6 @@
     ensureGauges();
     ensureCharts();
     await loadCharts(id);
-    await loadDeviceModel();
     refreshGauges();
   }
 
@@ -1055,7 +897,6 @@
         await nextTick();
         ensureGauges();
         ensureCharts();
-        await loadDeviceModel();
       }
       refreshGauges();
     } finally {
@@ -1143,6 +984,14 @@
       if (statusList.value.length > 0) {
         statusCarouselIndex.value = (statusCarouselIndex.value + 1) % statusList.value.length;
       }
+      nextTick(() => {
+        screenRef.value
+          ?.querySelector('.status-row.is-active')
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        screenRef.value
+          ?.querySelector('.alarm-row.is-active')
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
     }, 3000);
   }
 
@@ -1166,7 +1015,6 @@
       lubeStatusGauge?.resize();
       tempChart?.resize();
       currentChart?.resize();
-      resizeModelViewer();
     }, 120);
   }
 
@@ -1181,17 +1029,11 @@
     () => {
       ensureGauges();
       ensureCharts();
-      ensureModelViewer();
     }
   );
 
-  watch(deviceModelUrl, () => {
-    loadDeviceModel();
-  });
-
   onUnmounted(() => {
     document.removeEventListener('fullscreenchange', onFullscreenChange);
-    window.removeEventListener('resize', resizeModelViewer);
     removeOnMessage(SocketEnum.EventPlcRealtime);
     if (clockTimer) clearInterval(clockTimer);
     if (refreshTimer) clearInterval(refreshTimer);
@@ -1202,7 +1044,6 @@
     lubeStatusGauge?.dispose();
     tempChart?.dispose();
     currentChart?.dispose();
-    disposeModelViewer();
   });
 </script>
 
@@ -1211,6 +1052,7 @@
     position: relative;
     min-height: calc(100vh - 80px);
     padding: 12px;
+    box-sizing: border-box;
     background: linear-gradient(90deg, rgba(38, 111, 150, 0.08) 1px, transparent 1px),
       linear-gradient(180deg, rgba(38, 111, 150, 0.08) 1px, transparent 1px),
       radial-gradient(circle at 18% 8%, rgba(47, 112, 160, 0.16), transparent 26%),
@@ -1226,28 +1068,48 @@
     font-family: 'Microsoft YaHei', SimSun, sans-serif;
     overflow: hidden;
   }
+  .hmi-screen:fullscreen {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    min-height: 100vh;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .hmi-screen:fullscreen .hmi-top {
+    flex-shrink: 0;
+  }
+  .hmi-screen:fullscreen .hmi-body {
+    flex: 1;
+    min-height: 0;
+  }
+  .hmi-screen:fullscreen .block-device {
+    min-height: 0;
+    height: 100%;
+  }
+  .hmi-screen:fullscreen .device-canvas,
+  .hmi-screen:fullscreen .machine-stage {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+  }
   .hmi-screen::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(
-        120deg,
-        transparent 0 38%,
-        rgba(55, 213, 255, 0.1) 48%,
-        transparent 58% 100%
-      ),
-      radial-gradient(circle at 50% 0, rgba(255, 255, 255, 0.62), transparent 36%);
-    mix-blend-mode: screen;
+    background: radial-gradient(circle at 50% 0, rgba(255, 255, 255, 0.5), transparent 36%);
   }
   .hmi-screen::after {
     content: '';
     position: absolute;
     inset: 12px;
     pointer-events: none;
-    border: 1px solid rgba(34, 112, 155, 0.12);
+    border: 1px solid rgba(24, 144, 255, 0.1);
     border-radius: 18px;
-    box-shadow: inset 0 0 42px rgba(55, 213, 255, 0.08);
+    box-shadow: none;
   }
 
   // 顶栏
@@ -1255,33 +1117,32 @@
     z-index: 1;
     display: flex;
     align-items: center;
-    height: 56px;
-    background: rgba(45, 58, 69, 0.92);
-    color: #f8fbff;
-    border: 1px solid rgba(90, 130, 160, 0.24);
+    height: 58px;
+    background: linear-gradient(90deg, #1890ff 0%, #096dd9 100%);
+    color: #ffffff;
+    border: none;
     border-radius: 16px;
-    box-shadow:
-      0 18px 42px rgba(38, 58, 72, 0.16),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px);
+    box-shadow: 0 6px 24px rgba(24, 144, 255, 0.22);
     margin-bottom: 10px;
     position: relative;
     overflow: hidden;
 
     .top-deco-left {
-      width: 46px;
+      width: 52px;
       height: 100%;
-      background: linear-gradient(135deg, #2ed4ff 0%, #1c7da3 100%);
+      background: rgba(255, 255, 255, 0.15);
       clip-path: polygon(0 0, 100% 0, 62% 100%, 0 100%);
+      flex-shrink: 0;
     }
     .top-title {
       flex: 1;
       text-align: center;
-      font-family: 'SimSun', '宋体', serif;
-      font-size: 22px;
+      font-family: 'Microsoft YaHei', sans-serif;
+      font-size: 20px;
       font-weight: 700;
       letter-spacing: 4px;
-      text-shadow: 0 0 18px rgba(68, 210, 255, 0.28);
+      color: #ffffff;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .top-deco-right {
       display: flex;
@@ -1289,13 +1150,13 @@
       gap: 10px;
       padding: 0 16px;
       .clock {
-        background: rgba(14, 24, 32, 0.82);
-        color: #41d6ff;
+        background: rgba(0, 0, 0, 0.15);
+        color: #ffffff;
         font-family: Menlo, Consolas, monospace;
         padding: 5px 11px;
         font-size: 13px;
         border-radius: 999px;
-        border: 1px solid rgba(65, 214, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.25);
       }
     }
   }
@@ -1306,7 +1167,9 @@
     z-index: 1;
     display: grid;
     grid-template-columns: 280px minmax(680px, 1fr) 280px;
+    grid-template-rows: 1fr;
     gap: 10px;
+    align-items: stretch;
   }
 
   .col {
@@ -1334,7 +1197,7 @@
     width: 24px;
     height: 24px;
     pointer-events: none;
-    border-color: rgba(55, 213, 255, 0.52);
+    border-color: rgba(24, 144, 255, 0.35);
     z-index: 2;
   }
   .block::before {
@@ -1350,13 +1213,13 @@
     border-bottom: 1px solid;
   }
   .block-title {
-    background: rgba(44, 59, 70, 0.94);
-    color: #f4f8fb;
+    background: linear-gradient(90deg, rgba(24, 144, 255, 0.07), transparent 70%);
+    color: #1a2e3a;
     font-size: 13px;
     font-weight: 700;
-    padding: 8px 12px;
+    padding: 9px 12px;
     letter-spacing: 1px;
-    border-bottom: 1px solid rgba(43, 197, 237, 0.14);
+    border-bottom: 1px solid rgba(24, 144, 255, 0.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1366,29 +1229,34 @@
       height: 7px;
       margin-right: 8px;
       border-radius: 50%;
-      background: #37d5ff;
-      box-shadow: 0 0 12px rgba(55, 213, 255, 0.86);
+      background: #1890ff;
+      box-shadow: 0 0 8px rgba(24, 144, 255, 0.5);
+      flex-shrink: 0;
     }
     .block-sub {
       font-size: 11px;
       font-weight: 400;
-      color: rgba(255, 255, 255, 0.85);
+      color: #5a7a8a;
     }
   }
 
   :deep(.n-base-selection) {
-    --n-border: 1px solid rgba(76, 177, 216, 0.28) !important;
-    --n-border-active: 1px solid rgba(55, 213, 255, 0.78) !important;
-    --n-border-focus: 1px solid rgba(55, 213, 255, 0.78) !important;
-    --n-box-shadow-active: 0 0 0 2px rgba(55, 213, 255, 0.16) !important;
-    --n-box-shadow-focus: 0 0 0 2px rgba(55, 213, 255, 0.16) !important;
-    --n-color: rgba(12, 24, 34, 0.62) !important;
-    --n-text-color: #eaf8ff !important;
-    --n-placeholder-color: rgba(234, 248, 255, 0.72) !important;
-    backdrop-filter: blur(8px);
+    --n-border: 1px solid rgba(24, 144, 255, 0.3) !important;
+    --n-border-active: 1px solid rgba(24, 144, 255, 0.7) !important;
+    --n-border-focus: 1px solid rgba(24, 144, 255, 0.7) !important;
+    --n-box-shadow-active: 0 0 0 2px rgba(24, 144, 255, 0.12) !important;
+    --n-box-shadow-focus: 0 0 0 2px rgba(24, 144, 255, 0.12) !important;
+    --n-color: #ffffff !important;
+    --n-text-color: #1a2e3a !important;
+    --n-placeholder-color: rgba(90, 122, 138, 0.7) !important;
+    backdrop-filter: none;
   }
   :deep(.n-base-selection-label) {
-    background: linear-gradient(180deg, rgba(31, 64, 82, 0.92), rgba(15, 30, 42, 0.9)) !important;
+    background: #ffffff !important;
+    color: #1a2e3a !important;
+  }
+  :deep(.n-base-selection-placeholder) {
+    color: rgba(90, 122, 138, 0.7) !important;
   }
 
   // 仪表盘
@@ -1397,54 +1265,21 @@
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     padding: 12px;
-    background: linear-gradient(90deg, rgba(55, 213, 255, 0.08) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(55, 213, 255, 0.08) 1px, transparent 1px);
-    background-size: 18px 18px;
   }
   .gauge {
     position: relative;
     height: 154px;
     border-radius: 16px;
-    background: radial-gradient(circle at 50% 46%, rgba(55, 213, 255, 0.18), transparent 38%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(218, 234, 244, 0.42));
-    border: 1px solid rgba(55, 145, 185, 0.18);
+    background: #ffffff;
+    border: 1px solid rgba(200, 218, 230, 0.6);
     box-shadow:
-      inset 0 0 26px rgba(55, 213, 255, 0.08),
-      0 10px 24px rgba(36, 72, 94, 0.08);
+      0 4px 16px rgba(36, 72, 94, 0.08),
+      0 1px 4px rgba(36, 72, 94, 0.04);
     overflow: hidden;
   }
   .gauge-wide {
     grid-column: 1 / -1;
     height: 128px;
-  }
-  .gauge::before,
-  .gauge::after {
-    content: '';
-    position: absolute;
-    inset: 10px;
-    border-radius: 50%;
-    border: 1px dashed rgba(55, 213, 255, 0.22);
-    pointer-events: none;
-  }
-  .gauge::after {
-    inset: auto 18px 12px;
-    height: 1px;
-    border: 0;
-    border-radius: 0;
-    background: linear-gradient(90deg, transparent, rgba(55, 213, 255, 0.72), transparent);
-    animation: scanLine 2.4s ease-in-out infinite;
-  }
-
-  @keyframes scanLine {
-    0%,
-    100% {
-      opacity: 0.25;
-      transform: translateY(0);
-    }
-    50% {
-      opacity: 1;
-      transform: translateY(-118px);
-    }
   }
 
   // 参数表
@@ -1497,8 +1332,8 @@
       width: 4px;
       height: 4px;
       border-radius: 50%;
-      background: #37d5ff;
-      box-shadow: 0 0 8px rgba(55, 213, 255, 0.9);
+      background: #1890ff;
+      box-shadow: 0 0 5px rgba(24, 144, 255, 0.5);
       transform: translateY(-50%);
     }
     .param-value {
@@ -1594,17 +1429,16 @@
     );
     z-index: 4;
   }
-  .machine-model {
+  .machine-bg {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
+    object-fit: contain;
+    object-position: center center;
     z-index: 1;
-    cursor: grab;
-    outline: none;
-  }
-  .machine-model:active {
-    cursor: grabbing;
+    filter: saturate(1.08) contrast(1.06) brightness(0.92)
+      drop-shadow(0 12px 32px rgba(0, 0, 0, 0.22));
   }
   .readout-panel {
     position: absolute;
@@ -1614,41 +1448,38 @@
     width: clamp(174px, 21cqw, 214px);
     padding: 12px;
     border-radius: 16px;
-    background: #303b45;
-    border: 1px solid rgba(122, 196, 230, 0.28);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(24, 144, 255, 0.18);
     box-shadow:
-      0 20px 46px rgba(20, 34, 45, 0.34),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      0 8px 32px rgba(24, 144, 255, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(8px);
   }
   .readout-panel::after {
-    content: '';
-    position: absolute;
-    inset: -8px -10px -8px -10px;
-    z-index: -1;
-    border-radius: 18px;
-    background: #303b45;
-    box-shadow: 0 20px 46px rgba(20, 34, 45, 0.34);
+    display: none;
   }
   .readout-panel::before {
     content: '运行数据';
     display: block;
     margin-bottom: 8px;
-    color: #ff9800;
-    font-size: 15px;
+    color: #1890ff;
+    font-size: 13px;
     font-weight: 800;
     text-align: center;
     letter-spacing: 2px;
+    border-bottom: 1px solid rgba(24, 144, 255, 0.12);
+    padding-bottom: 6px;
   }
   .readout-card {
     position: relative;
     display: flex;
     align-items: baseline;
-    min-height: 40px;
+    min-height: 38px;
     padding: 0 2px;
     border-radius: 0;
-    color: #f8fbff;
+    color: #1a2e3a;
     border: 0;
-    border-bottom: 1px solid rgba(112, 143, 160, 0.22);
+    border-bottom: 1px solid rgba(24, 144, 255, 0.08);
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
@@ -1661,30 +1492,31 @@
     display: inline-block;
     flex: 1;
     min-width: 78px;
-    color: rgba(223, 233, 241, 0.72);
+    color: #5a7a8a;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
   }
   .readout-card strong {
-    color: #f4f8ff;
+    color: #1a2e3a;
     font-family: Menlo, Consolas, monospace;
     font-size: clamp(15px, 1.9cqw, 18px);
+    font-weight: 700;
     letter-spacing: 0.2px;
     margin-right: 4px;
     text-align: right;
   }
   .readout-card small {
-    color: rgba(233, 241, 247, 0.68);
+    color: #9ab0bc;
     font-size: 11px;
   }
   .readout-card.val-power strong {
-    color: #4de18c;
+    color: #52c41a;
   }
   .readout-card.val-high strong {
-    color: #ff6b6b;
+    color: #ff4d4f;
   }
   .readout-card.val-low strong {
-    color: #ffd166;
+    color: #faad14;
   }
   .live-badge {
     position: absolute;
@@ -1710,30 +1542,6 @@
     box-shadow: 0 0 12px #1fd17a;
     animation: dotPulse 1.4s ease-in-out infinite;
   }
-  .model-rotate-btn {
-    position: absolute;
-    left: 18px;
-    bottom: 20px;
-    z-index: 4;
-    height: 30px;
-    padding: 0 13px;
-    color: #d7f7ff;
-    font-size: 12px;
-    font-weight: 700;
-    border: 1px solid rgba(77, 229, 255, 0.3);
-    border-radius: 999px;
-    background: rgba(5, 15, 23, 0.72);
-    box-shadow:
-      inset 0 0 18px rgba(77, 229, 255, 0.08),
-      0 12px 24px rgba(0, 0, 0, 0.18);
-    cursor: pointer;
-  }
-  .model-rotate-btn:hover {
-    color: #ffffff;
-    border-color: rgba(77, 229, 255, 0.72);
-    background: rgba(77, 229, 255, 0.16);
-  }
-
   @keyframes dotPulse {
     0%,
     100% {
@@ -1755,13 +1563,9 @@
   .chart-area {
     height: 190px;
     width: 100%;
-    background: linear-gradient(90deg, rgba(55, 213, 255, 0.05) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(55, 213, 255, 0.05) 1px, transparent 1px),
-      radial-gradient(circle at 50% 20%, rgba(55, 213, 255, 0.12), transparent 48%);
-    background-size:
-      18px 18px,
-      18px 18px,
-      auto;
+    background: linear-gradient(90deg, rgba(24, 144, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(24, 144, 255, 0.04) 1px, transparent 1px);
+    background-size: 18px 18px;
   }
 
   // 状态列表
@@ -1823,6 +1627,14 @@
     padding: 20px 0;
     font-size: 12px;
   }
+  .status-row.is-active {
+    background: rgba(45, 180, 255, 0.18);
+    border-color: rgba(45, 180, 255, 0.4);
+    box-shadow: 0 0 0 1px rgba(45, 180, 255, 0.25);
+    transition:
+      background 0.4s,
+      box-shadow 0.4s;
+  }
 
   // 报警
   .block-alarm {
@@ -1865,6 +1677,14 @@
       padding: 2px 6px;
       border-radius: 999px;
     }
+  }
+  .alarm-row.is-active {
+    background: rgba(255, 200, 60, 0.18);
+    border-color: rgba(255, 200, 60, 0.4);
+    box-shadow: 0 0 0 1px rgba(255, 200, 60, 0.25);
+    transition:
+      background 0.4s,
+      box-shadow 0.4s;
   }
   .alarm-on {
     background: rgba(255, 232, 232, 0.7);
@@ -1916,109 +1736,65 @@
     }
   }
 
-  // 科技数据仓主题覆盖
+  // 浅色主题覆盖
   .hmi-screen {
-    --warehouse-bg: #071018;
-    --warehouse-panel: rgba(9, 23, 34, 0.82);
-    --warehouse-panel-strong: rgba(12, 31, 45, 0.94);
-    --warehouse-border: rgba(77, 223, 255, 0.22);
-    --warehouse-cyan: #4de5ff;
-    --warehouse-blue: #3b82f6;
-    --warehouse-green: #48f5a5;
-    --warehouse-amber: #ffc857;
-    --warehouse-red: #ff5c7a;
+    --panel-bg: #ffffff;
+    --panel-border: rgba(180, 210, 230, 0.55);
+    --accent-blue: #1890ff;
+    --accent-orange: #f5a623;
+    --accent-green: #52c41a;
+    --accent-red: #ff4d4f;
+    --accent-amber: #faad14;
+    --text-primary: #1a2e3a;
+    --text-secondary: #5a7a8a;
+    --text-muted: #9ab0bc;
 
     min-height: calc(100vh - 80px);
     padding: 14px;
-    color: #d7f7ff;
-    font-family: 'DIN Alternate', 'Bahnschrift', 'Microsoft YaHei', sans-serif;
-    background: linear-gradient(90deg, rgba(77, 229, 255, 0.08) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(77, 229, 255, 0.08) 1px, transparent 1px),
-      radial-gradient(circle at 12% 12%, rgba(67, 190, 255, 0.26), transparent 24%),
-      radial-gradient(circle at 82% 8%, rgba(72, 245, 165, 0.18), transparent 26%),
-      radial-gradient(circle at 50% 110%, rgba(14, 116, 144, 0.36), transparent 42%),
-      linear-gradient(135deg, #050b12 0%, #071018 42%, #0d1821 100%);
+    color: var(--text-primary);
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    background: linear-gradient(90deg, rgba(24, 144, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(24, 144, 255, 0.05) 1px, transparent 1px),
+      radial-gradient(circle at 10% 10%, rgba(24, 144, 255, 0.08), transparent 28%),
+      radial-gradient(circle at 90% 6%, rgba(245, 166, 35, 0.07), transparent 26%),
+      linear-gradient(160deg, #eef4fb 0%, #e6f0f8 50%, #edf3fa 100%);
     background-size:
-      34px 34px,
-      34px 34px,
-      auto,
+      28px 28px,
+      28px 28px,
       auto,
       auto,
       auto;
   }
   .hmi-screen::before {
-    background: repeating-linear-gradient(
-        90deg,
-        transparent 0 23px,
-        rgba(77, 229, 255, 0.035) 24px 25px
-      ),
-      linear-gradient(115deg, transparent 0 36%, rgba(77, 229, 255, 0.12) 46%, transparent 56% 100%),
-      radial-gradient(circle at 50% 0, rgba(96, 239, 255, 0.16), transparent 34%);
-    mix-blend-mode: screen;
-    animation: warehouseSweep 9s linear infinite;
+    background: none;
+    animation: none;
   }
   .hmi-screen::after {
     inset: 10px;
-    border-color: rgba(77, 229, 255, 0.2);
+    border-color: rgba(24, 144, 255, 0.12);
     border-radius: 22px;
-    box-shadow:
-      inset 0 0 80px rgba(77, 229, 255, 0.08),
-      0 0 0 1px rgba(5, 10, 16, 0.75);
+    box-shadow: inset 0 0 60px rgba(24, 144, 255, 0.04);
   }
   .warehouse-orbit {
-    position: absolute;
-    pointer-events: none;
-    border: 1px solid rgba(77, 229, 255, 0.16);
-    border-radius: 50%;
-    filter: drop-shadow(0 0 22px rgba(77, 229, 255, 0.15));
-    z-index: 0;
-  }
-  .orbit-a {
-    width: 420px;
-    height: 420px;
-    left: -150px;
-    top: 80px;
-    background: conic-gradient(from 45deg, transparent, rgba(77, 229, 255, 0.16), transparent 38%);
-    animation: orbitRotate 24s linear infinite;
-  }
-  .orbit-b {
-    width: 520px;
-    height: 520px;
-    right: -210px;
-    bottom: -160px;
-    background: conic-gradient(from 190deg, transparent, rgba(72, 245, 165, 0.12), transparent 42%);
-    animation: orbitRotate 32s linear reverse infinite;
+    display: none;
   }
 
   .hmi-top {
-    height: 66px;
-    background: linear-gradient(
-        90deg,
-        rgba(77, 229, 255, 0.16),
-        transparent 18% 82%,
-        rgba(72, 245, 165, 0.12)
-      ),
-      rgba(6, 16, 25, 0.92);
-    border-color: rgba(77, 229, 255, 0.26);
-    border-radius: 18px;
+    height: 62px;
+    background: linear-gradient(90deg, #1890ff 0%, #096dd9 100%);
+    border-color: rgba(24, 144, 255, 0.3);
+    border-radius: 16px;
     box-shadow:
-      0 22px 50px rgba(0, 0, 0, 0.28),
-      inset 0 1px 0 rgba(151, 236, 255, 0.18),
-      inset 0 -1px 0 rgba(77, 229, 255, 0.12);
+      0 6px 24px rgba(24, 144, 255, 0.22),
+      0 2px 6px rgba(24, 144, 255, 0.12);
   }
   .hmi-top::before {
-    content: '';
-    position: absolute;
-    left: 72px;
-    right: 72px;
-    bottom: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--warehouse-cyan), transparent);
+    display: none;
   }
   .hmi-top .top-deco-left {
-    width: 70px;
-    background: linear-gradient(135deg, rgba(77, 229, 255, 0.95), rgba(28, 94, 143, 0.7)),
-      repeating-linear-gradient(90deg, transparent 0 7px, rgba(255, 255, 255, 0.28) 8px 9px);
+    width: 60px;
+    background: rgba(255, 255, 255, 0.18);
+    clip-path: polygon(0 0, 100% 0, 62% 100%, 0 100%);
   }
   .hmi-top .top-title {
     display: flex;
@@ -2026,44 +1802,43 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    letter-spacing: 5px;
+    letter-spacing: 4px;
   }
   .hmi-top .top-title strong {
-    color: #eaffff;
-    font-size: 24px;
+    color: #ffffff;
+    font-size: 22px;
     line-height: 1;
-    text-shadow:
-      0 0 18px rgba(77, 229, 255, 0.58),
-      0 0 34px rgba(72, 245, 165, 0.18);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   }
   .title-kicker {
-    color: rgba(77, 229, 255, 0.76);
-    font-family: 'Agency FB', 'Bahnschrift', sans-serif;
+    color: rgba(255, 255, 255, 0.72);
     font-size: 10px;
-    letter-spacing: 6px;
+    letter-spacing: 5px;
   }
   .hmi-top .top-deco-right .clock {
-    color: var(--warehouse-green);
-    background: rgba(4, 12, 18, 0.9);
-    border-color: rgba(72, 245, 165, 0.28);
-    box-shadow:
-      inset 0 0 18px rgba(72, 245, 165, 0.08),
-      0 0 18px rgba(72, 245, 165, 0.08);
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.18);
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow: none;
   }
   .fullscreen-btn {
     min-width: 74px;
-    color: #d7f7ff;
-    border-color: rgba(77, 229, 255, 0.34);
-    background: rgba(5, 15, 23, 0.62);
-    box-shadow: inset 0 0 18px rgba(77, 229, 255, 0.08);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
   }
   .fullscreen-btn:hover {
     color: #ffffff;
-    border-color: rgba(77, 229, 255, 0.78);
-    background: rgba(77, 229, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.22);
   }
   :deep(.n-base-selection-label) {
-    background: linear-gradient(180deg, rgba(10, 35, 50, 0.96), rgba(4, 13, 21, 0.96)) !important;
+    background: #ffffff !important;
+    color: #1a2e3a !important;
+  }
+  :deep(.n-base-selection-input) {
+    color: #1a2e3a !important;
   }
 
   .warehouse-strip {
@@ -2079,98 +1854,82 @@
     min-height: 76px;
     padding: 12px 14px;
     overflow: hidden;
-    border: 1px solid var(--warehouse-border);
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(77, 229, 255, 0.1), transparent 36%),
-      rgba(7, 20, 31, 0.78);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: #ffffff;
     box-shadow:
-      inset 0 1px 0 rgba(151, 236, 255, 0.12),
-      0 18px 36px rgba(0, 0, 0, 0.18);
+      0 2px 10px rgba(24, 144, 255, 0.08),
+      0 1px 3px rgba(0, 0, 0, 0.04);
   }
   .warehouse-chip::after {
     content: '';
     position: absolute;
-    inset: auto 12px 10px 12px;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, currentColor, transparent);
-    opacity: 0.58;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 999px 999px 0 0;
+    background: currentColor;
+    opacity: 0.28;
   }
   .warehouse-chip::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      110deg,
-      transparent 0 38%,
-      rgba(255, 255, 255, 0.18) 48%,
-      transparent 58% 100%
-    );
-    transform: translateX(-120%);
-    animation: chipScan 3s ease-in-out infinite;
+    display: none;
   }
   .warehouse-chip .chip-label {
     display: block;
-    color: rgba(214, 247, 255, 0.6);
+    color: var(--text-muted);
     font-size: 10px;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
   }
   .warehouse-chip strong {
     display: block;
-    margin-top: 6px;
+    margin-top: 4px;
     color: currentColor;
-    font-family: 'Agency FB', 'Bahnschrift', monospace;
-    font-size: 26px;
+    font-size: 24px;
+    font-weight: 700;
     line-height: 1;
   }
   .chip-value {
-    animation: chipRise 0.58s cubic-bezier(0.2, 0.86, 0.28, 1.08);
+    animation: chipRise 0.5s cubic-bezier(0.2, 0.86, 0.28, 1.08);
   }
   .warehouse-chip small {
     display: block;
-    margin-top: 5px;
-    color: rgba(214, 247, 255, 0.58);
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .chip-desc {
-    animation: chipRise 0.5s ease both;
+    animation: chipRise 0.45s ease both;
   }
   .tone-cyan {
-    color: var(--warehouse-cyan);
+    color: var(--accent-blue);
   }
   .tone-blue {
-    color: #7bb5ff;
+    color: #096dd9;
   }
   .tone-green {
-    color: var(--warehouse-green);
+    color: var(--accent-green);
   }
   .tone-amber {
-    color: var(--warehouse-amber);
+    color: var(--accent-amber);
   }
   .tone-red {
-    color: var(--warehouse-red);
+    color: var(--accent-red);
   }
 
   @keyframes chipRise {
     0% {
       opacity: 0;
-      transform: translateY(18px);
-      filter: blur(4px);
+      transform: translateY(14px);
+      filter: blur(3px);
     }
     100% {
       opacity: 1;
       transform: translateY(0);
       filter: blur(0);
-    }
-  }
-  @keyframes chipScan {
-    0% {
-      transform: translateX(-120%);
-    }
-    45%,
-    100% {
-      transform: translateX(120%);
     }
   }
 
@@ -2179,34 +1938,32 @@
     gap: 12px;
   }
   .block {
-    background: linear-gradient(145deg, rgba(77, 229, 255, 0.08), transparent 42%),
-      var(--warehouse-panel);
-    border-color: var(--warehouse-border);
-    border-radius: 18px;
+    background: #ffffff;
+    border-color: var(--panel-border);
+    border-radius: 16px;
     box-shadow:
-      inset 0 1px 0 rgba(151, 236, 255, 0.1),
-      inset 0 -1px 0 rgba(77, 229, 255, 0.08),
-      0 22px 48px rgba(0, 0, 0, 0.22);
+      0 2px 12px rgba(24, 144, 255, 0.07),
+      0 1px 3px rgba(0, 0, 0, 0.04);
   }
   .block::before,
   .block::after {
-    width: 34px;
-    height: 34px;
-    border-color: rgba(77, 229, 255, 0.7);
+    width: 28px;
+    height: 28px;
+    border-color: rgba(24, 144, 255, 0.4);
   }
   .block-title {
     min-height: 40px;
     padding: 10px 14px;
-    background: linear-gradient(90deg, rgba(77, 229, 255, 0.14), transparent 62%),
-      rgba(5, 14, 22, 0.94);
-    color: #e6fbff;
-    border-bottom-color: rgba(77, 229, 255, 0.18);
+    background: linear-gradient(90deg, rgba(24, 144, 255, 0.06), transparent 70%);
+    color: var(--text-primary);
+    border-bottom-color: rgba(24, 144, 255, 0.1);
     font-size: 13px;
-    letter-spacing: 2px;
+    font-weight: 700;
+    letter-spacing: 1px;
   }
   .block-title::before {
-    background: var(--warehouse-cyan);
-    box-shadow: 0 0 16px rgba(77, 229, 255, 0.9);
+    background: var(--accent-blue);
+    box-shadow: 0 0 8px rgba(24, 144, 255, 0.5);
   }
 
   .gauges,
@@ -2214,153 +1971,133 @@
   .param-table,
   .status-list,
   .alarm-list {
-    background: linear-gradient(90deg, rgba(77, 229, 255, 0.045) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(77, 229, 255, 0.045) 1px, transparent 1px);
-    background-size: 22px 22px;
+    background: none;
   }
   .gauge {
-    background: radial-gradient(circle at 50% 44%, rgba(77, 229, 255, 0.2), transparent 42%),
-      linear-gradient(180deg, rgba(15, 38, 54, 0.92), rgba(5, 16, 25, 0.86));
-    border-color: rgba(77, 229, 255, 0.2);
+    background: #f7fafd;
+    border-color: rgba(180, 210, 230, 0.5);
     box-shadow:
-      inset 0 0 42px rgba(77, 229, 255, 0.08),
-      0 12px 26px rgba(0, 0, 0, 0.24);
-  }
-  .gauge::before {
-    border-color: rgba(77, 229, 255, 0.32);
-    background: radial-gradient(circle, rgba(4, 13, 21, 0.08), rgba(4, 13, 21, 0.34) 64%);
-  }
-  .gauge::after {
-    background: linear-gradient(90deg, transparent, rgba(77, 229, 255, 0.9), transparent);
+      0 2px 8px rgba(24, 144, 255, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
   }
   .param-table .param-row,
   .status-row,
   .alarm-row {
-    color: #d7f7ff;
-    background: linear-gradient(90deg, rgba(77, 229, 255, 0.08), rgba(255, 255, 255, 0.02));
-    border-color: rgba(77, 229, 255, 0.12);
-    border-left-color: rgba(77, 229, 255, 0.58);
+    color: var(--text-primary);
+    background: #f7fafd;
+    border-color: rgba(180, 210, 230, 0.4);
+    border-left-color: var(--accent-blue);
   }
   .param-table .param-row:hover,
   .status-row:hover,
   .alarm-row:hover {
-    background: linear-gradient(90deg, rgba(77, 229, 255, 0.16), rgba(72, 245, 165, 0.04));
-    box-shadow:
-      inset 0 0 0 1px rgba(77, 229, 255, 0.18),
-      0 12px 24px rgba(0, 0, 0, 0.16);
+    background: rgba(24, 144, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(24, 144, 255, 0.14);
+  }
+  .hmi-screen .status-row.is-active {
+    background: rgba(24, 144, 255, 0.1);
+    border-color: rgba(24, 144, 255, 0.4);
+    box-shadow: 0 0 0 1px rgba(24, 144, 255, 0.2);
+  }
+  .hmi-screen .alarm-row.is-active {
+    background: rgba(250, 173, 20, 0.1);
+    border-color: rgba(250, 173, 20, 0.4);
+    box-shadow: 0 0 0 1px rgba(250, 173, 20, 0.22);
   }
   .param-table .param-label,
   .status-row .status-name,
   .alarm-row .alarm-name {
-    color: rgba(215, 247, 255, 0.76);
+    color: var(--text-secondary);
   }
   .param-table .param-value {
-    color: var(--warehouse-cyan);
+    color: var(--accent-blue);
   }
   .param-table .param-value small,
   .status-empty,
   .alarm-empty {
-    color: rgba(215, 247, 255, 0.42);
+    color: var(--text-muted);
   }
 
   .alarm-banner {
-    background: linear-gradient(90deg, rgba(255, 92, 122, 0.24), rgba(255, 200, 87, 0.16));
-    color: #ffe8ed;
-    border-color: rgba(255, 92, 122, 0.36);
-    box-shadow: inset 0 0 20px rgba(255, 92, 122, 0.08);
+    background: rgba(255, 77, 79, 0.08);
+    color: #cf1322;
+    border-color: rgba(255, 77, 79, 0.3);
+    box-shadow: none;
   }
   .alarm-banner-ok {
-    background: linear-gradient(90deg, rgba(72, 245, 165, 0.18), rgba(77, 229, 255, 0.08));
-    color: #caffea;
-    border-color: rgba(72, 245, 165, 0.28);
+    background: rgba(82, 196, 26, 0.08);
+    color: #389e0d;
+    border-color: rgba(82, 196, 26, 0.28);
   }
   .device-canvas,
   .machine-stage {
-    background: radial-gradient(circle at 45% 40%, rgba(77, 229, 255, 0.16), transparent 34%),
-      linear-gradient(180deg, #07131e 0%, #0a1722 52%, #050c13 100%);
-  }
-  .machine-model {
-    filter: drop-shadow(0 18px 38px rgba(0, 0, 0, 0.28));
+    background: linear-gradient(180deg, #eef4fb 0%, #e6f0f8 100%);
   }
   .machine-stage::after {
     background: linear-gradient(
-        90deg,
-        rgba(77, 229, 255, 0.1),
-        transparent 18%,
-        transparent 72%,
-        rgba(77, 229, 255, 0.12)
-      ),
-      radial-gradient(circle at 50% 50%, transparent 0 44%, rgba(4, 10, 16, 0.48) 88%);
+      90deg,
+      rgba(255, 255, 255, 0.5),
+      transparent 20%,
+      transparent 80%,
+      rgba(255, 255, 255, 0.5)
+    );
   }
   .readout-panel,
   .readout-panel::after {
-    background: linear-gradient(180deg, rgba(8, 22, 33, 0.96), rgba(5, 13, 20, 0.96));
-    border-color: rgba(77, 229, 255, 0.28);
+    background: rgba(255, 255, 255, 0.96);
+    border-color: rgba(180, 210, 230, 0.6);
   }
   .readout-panel::before {
-    color: var(--warehouse-amber);
+    color: var(--accent-blue);
   }
   .readout-card {
-    color: #eaffff;
-    border-bottom-color: rgba(77, 229, 255, 0.12);
+    color: var(--text-primary);
+    border-bottom-color: rgba(180, 210, 230, 0.3);
   }
   .readout-label {
-    color: rgba(215, 247, 255, 0.58);
+    color: var(--text-muted);
   }
   .readout-card strong {
-    color: #eaffff;
+    color: var(--text-primary);
   }
   .live-badge {
-    color: #caffea;
-    background: rgba(5, 15, 23, 0.76);
-    border-color: rgba(72, 245, 165, 0.26);
+    color: var(--accent-green);
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(82, 196, 26, 0.3);
   }
 
   .status-row .led-on {
-    background: var(--warehouse-green);
-    box-shadow: 0 0 14px rgba(72, 245, 165, 0.9);
+    background: var(--accent-green);
+    box-shadow: 0 0 8px rgba(82, 196, 26, 0.6);
   }
   .status-row .led-off,
   .alarm-off .alarm-led {
-    background: rgba(126, 154, 169, 0.44);
+    background: #c8d8e2;
   }
   .status-row .txt-on {
-    color: var(--warehouse-green);
+    color: var(--accent-green);
   }
   .status-row .txt-off,
   .alarm-off .alarm-name {
-    color: rgba(215, 247, 255, 0.42);
+    color: var(--text-muted);
   }
   .alarm-on {
-    background: linear-gradient(90deg, rgba(255, 92, 122, 0.2), rgba(255, 200, 87, 0.08));
+    background: rgba(255, 77, 79, 0.06);
   }
   .alarm-on .alarm-led {
-    background: var(--warehouse-red);
-    box-shadow: 0 0 12px rgba(255, 92, 122, 0.9);
+    background: var(--accent-red);
+    box-shadow: 0 0 8px rgba(255, 77, 79, 0.5);
   }
   .alarm-on .alarm-name {
-    color: #ffcad4;
+    color: #cf1322;
   }
   .alarm-on .alarm-tag {
-    background: var(--warehouse-red);
+    background: var(--accent-red);
+    color: #fff;
   }
   .alarm-off .alarm-tag {
-    color: rgba(215, 247, 255, 0.52);
-    background: rgba(77, 229, 255, 0.08);
-  }
-
-  @keyframes warehouseSweep {
-    0% {
-      transform: translateX(-3%);
-    }
-    100% {
-      transform: translateX(3%);
-    }
-  }
-  @keyframes orbitRotate {
-    to {
-      transform: rotate(360deg);
-    }
+    color: var(--text-muted);
+    background: rgba(180, 210, 230, 0.25);
   }
 
   @media screen and (max-width: 1360px) {
