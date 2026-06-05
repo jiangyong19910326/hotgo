@@ -60,7 +60,7 @@
           </div>
         </div>
 
-        <div class="block">
+        <div class="block block-params">
           <div class="block-title">主要参数</div>
           <div class="param-table">
             <div class="param-row" v-for="row in paramRows" :key="row.label">
@@ -1282,6 +1282,15 @@
     height: 128px;
   }
 
+  .block-params {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    .param-table {
+      flex: 1;
+    }
+  }
+
   // 参数表
   .param-table {
     position: relative;
@@ -1400,45 +1409,39 @@
   }
   .device-canvas {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     padding: 0;
-    background: #eef3f7;
+    background: transparent;
     overflow: hidden;
     border-radius: 0 0 16px 16px;
   }
   .machine-stage {
     position: relative;
+    flex: 1;
     min-height: 460px;
-    height: 100%;
     container-type: inline-size;
     overflow: hidden;
     isolation: isolate;
-    background: radial-gradient(circle at 42% 20%, rgba(255, 255, 255, 0.8), transparent 34%),
-      linear-gradient(180deg, #e9eef4 0%, #f8fbff 52%, #dce7f0 100%);
+    background: transparent;
   }
   .machine-stage::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(
-      90deg,
-      rgba(235, 243, 250, 0.18),
-      transparent 18%,
-      transparent 72%,
-      rgba(235, 243, 250, 0.35)
-    );
-    z-index: 4;
+    display: none;
   }
   .machine-bg {
     position: absolute;
     inset: 0;
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: contain;
     object-position: center center;
+    background: rgba(255, 255, 255, 0.76);
+    border: 0;
+    outline: 0;
+    box-shadow: none;
     z-index: 1;
-    filter: saturate(1.08) contrast(1.06) brightness(0.92)
-      drop-shadow(0 12px 32px rgba(0, 0, 0, 0.22));
+    filter: none;
   }
   .readout-panel {
     position: absolute;
@@ -2031,7 +2034,7 @@
   }
   .device-canvas,
   .machine-stage {
-    background: linear-gradient(180deg, #eef4fb 0%, #e6f0f8 100%);
+    background: rgba(255, 255, 255, 0.76);
   }
   .machine-stage::after {
     background: linear-gradient(
