@@ -411,7 +411,7 @@
         tone: '',
       },
       {
-        label: '设备状态',
+        label: '油站设备状态',
         icon: '●',
         value: runState.value,
         unit: '',
@@ -985,9 +985,6 @@
         statusCarouselIndex.value = (statusCarouselIndex.value + 1) % statusList.value.length;
       }
       nextTick(() => {
-        screenRef.value
-          ?.querySelector('.status-row.is-active')
-          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         screenRef.value
           ?.querySelector('.alarm-row.is-active')
           ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
