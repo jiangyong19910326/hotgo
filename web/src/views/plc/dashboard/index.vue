@@ -125,12 +125,7 @@
         <div class="block">
           <div class="block-title">设备状态</div>
           <div class="status-list">
-            <div
-              v-for="(s, idx) in statusList"
-              :key="s.field"
-              class="status-row"
-              :class="{ 'is-active': statusCarouselIndex % statusList.length === idx }"
-            >
+            <div v-for="s in statusList" :key="s.field" class="status-row">
               <span class="status-led" :class="isStatusOn(s) ? 'led-on' : 'led-off'"></span>
               <span class="status-name">{{ s.name || s.field }}</span>
               <span class="status-text" :class="isStatusOn(s) ? 'txt-on' : 'txt-off'">
@@ -981,9 +976,6 @@
       if (allAlarms.value.length > 0) {
         alarmCarouselIndex.value = (alarmCarouselIndex.value + 1) % allAlarms.value.length;
       }
-      if (statusList.value.length > 0) {
-        statusCarouselIndex.value = (statusCarouselIndex.value + 1) % statusList.value.length;
-      }
       nextTick(() => {
         screenRef.value
           ?.querySelector('.alarm-row.is-active')
@@ -1667,15 +1659,6 @@
     padding: 20px 0;
     font-size: 12px;
   }
-  .status-row.is-active {
-    background: rgba(45, 180, 255, 0.18);
-    border-color: rgba(45, 180, 255, 0.4);
-    box-shadow: 0 0 0 1px rgba(45, 180, 255, 0.25);
-    transition:
-      background 0.4s,
-      box-shadow 0.4s;
-  }
-
   // 报警
   .block-alarm {
     flex: 1;
@@ -2033,11 +2016,6 @@
   .alarm-row:hover {
     background: rgba(24, 144, 255, 0.06);
     box-shadow: inset 0 0 0 1px rgba(24, 144, 255, 0.14);
-  }
-  .hmi-screen .status-row.is-active {
-    background: rgba(24, 144, 255, 0.1);
-    border-color: rgba(24, 144, 255, 0.4);
-    box-shadow: 0 0 0 1px rgba(24, 144, 255, 0.2);
   }
   .hmi-screen .alarm-row.is-active {
     background: rgba(250, 173, 20, 0.1);
