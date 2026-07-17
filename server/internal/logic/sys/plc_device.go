@@ -132,11 +132,14 @@ func (s *sPlcDevice) Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (
 
 // Control 通过 MQTT 向设备发送一键启动/停止命令。
 func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (err error) {
+	g.Log().Infof(ctx, "plc device control requested: deviceId=%d action=%s", in.DeviceId, in.Action)
+
 	dev, err := s.GetById(ctx, in.DeviceId)
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(dev.Host) == "" {
+		g.Log().Warningf(ctx, "plc device control failed: empty host, deviceId=%d", in.DeviceId)
 		return gerror.New("设备DTU编号为空，无法发送控制命令")
 	}
 
@@ -145,6 +148,7 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 		return err
 	}
 	if point == nil || strings.TrimSpace(point.Field) == "" {
+		g.Log().Warningf(ctx, "plc device control failed: control point not found, deviceId=%d action=%s", in.DeviceId, in.Action)
 		return gerror.New("未找到对应的一键启停点位")
 	}
 
@@ -159,6 +163,7 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 	}
 
 	topic := "/dtu/" + strings.Trim(dev.Host, "/") + "/cmd"
+	g.Log().Infof(ctx, "plc device control publish: deviceId=%d action=%s topic=%s payload=%s", in.DeviceId, in.Action, topic, string(payload))
 	return mqttx.Publish(ctx, topic, payload, 1)
 }
 

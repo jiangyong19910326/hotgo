@@ -131,17 +131,20 @@ func Publish(ctx context.Context, topic string, payload []byte, qos byte) error 
 	clientMu.Unlock()
 
 	if c == nil || !c.IsConnected() {
+		g.Log().Warningf(ctx, "mqttx publish skipped: client not connected topic=%s payload=%s", topic, string(payload))
 		return gerror.New("mqtt client not connected")
 	}
 
 	token := c.Publish(topic, qos, false, payload)
 	if !token.WaitTimeout(5 * time.Second) {
+		g.Log().Warningf(ctx, "mqttx publish timeout: topic=%s payload=%s", topic, string(payload))
 		return gerror.New("mqtt publish timeout")
 	}
 	if token.Error() != nil {
+		g.Log().Warningf(ctx, "mqttx publish failed: topic=%s err=%v payload=%s", topic, token.Error(), string(payload))
 		return token.Error()
 	}
-	g.Log().Infof(ctx, "mqttx published: topic=%s len=%d", topic, len(payload))
+	g.Log().Infof(ctx, "mqttx published: topic=%s payload=%s", topic, string(payload))
 	return nil
 }
 
