@@ -163,8 +163,9 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 	}
 
 	topic := "/dtu/" + strings.Trim(dev.Host, "/") + "/cmd"
-	g.Log().Infof(ctx, "plc device control publish: deviceId=%d action=%s topic=%s payload=%s", in.DeviceId, in.Action, topic, string(payload))
-	if err = mqttx.Publish(ctx, topic, payload, 0); err != nil {
+	qos := byte(0)
+	g.Log().Infof(ctx, "plc device control publish: deviceId=%d action=%s topic=%s qos=%d payload=%s", in.DeviceId, in.Action, topic, qos, string(payload))
+	if err = mqttx.Publish(ctx, topic, payload, qos); err != nil {
 		return nil, err
 	}
 
@@ -176,6 +177,7 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 		PointField: point.Field,
 		Topic:      topic,
 		Payload:    string(payload),
+		QoS:        qos,
 	}, nil
 }
 

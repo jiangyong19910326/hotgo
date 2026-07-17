@@ -136,6 +136,11 @@ func Publish(ctx context.Context, topic string, payload []byte, qos byte) error 
 	}
 
 	token := c.Publish(topic, qos, false, payload)
+	if qos == 0 {
+		g.Log().Infof(ctx, "mqttx published(qos0 queued): topic=%s payload=%s", topic, string(payload))
+		return nil
+	}
+
 	if !token.WaitTimeout(5 * time.Second) {
 		g.Log().Warningf(ctx, "mqttx publish timeout: topic=%s payload=%s", topic, string(payload))
 		return gerror.New("mqtt publish timeout")

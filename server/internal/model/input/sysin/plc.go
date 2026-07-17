@@ -128,6 +128,7 @@ type PlcDeviceControlModel struct {
 	PointField string `json:"pointField"`
 	Topic      string `json:"topic"`
 	Payload    string `json:"payload"`
+	QoS        byte   `json:"qos"`
 }
 
 // ─────────────────────────────────────────────────────────────
