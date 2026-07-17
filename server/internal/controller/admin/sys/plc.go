@@ -114,7 +114,11 @@ func (c *cPlc) DeviceStatus(ctx context.Context, req *plc.DeviceStatusReq) (res 
 }
 
 func (c *cPlc) DeviceControl(ctx context.Context, req *plc.DeviceControlReq) (res *plc.DeviceControlRes, err error) {
-	err = service.PlcDevice().Control(ctx, &req.PlcDeviceControlInp)
+	data, err := service.PlcDevice().Control(ctx, &req.PlcDeviceControlInp)
+	if err != nil {
+		return nil, err
+	}
+	res = &plc.DeviceControlRes{PlcDeviceControlModel: data}
 	return
 }
 

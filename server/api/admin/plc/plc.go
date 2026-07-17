@@ -97,7 +97,9 @@ type DeviceControlReq struct {
 	g.Meta `path:"/plc/device/control" method:"post" tags:"PLC设备" summary:"发送PLC设备启停命令"`
 	sysin.PlcDeviceControlInp
 }
-type DeviceControlRes struct{}
+type DeviceControlRes struct {
+	*sysin.PlcDeviceControlModel
+}
 
 // ─────────────────────────────────────────────────────────────
 // 数据点

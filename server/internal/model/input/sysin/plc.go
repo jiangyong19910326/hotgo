@@ -120,6 +120,16 @@ type PlcDeviceControlInp struct {
 	Action   string `json:"action"   v:"required|in:start,stop#控制动作不能为空|控制动作仅支持start/stop" dc:"控制动作 start/stop"`
 }
 
+type PlcDeviceControlModel struct {
+	DeviceId   int    `json:"deviceId"`
+	DeviceCode string `json:"deviceCode"`
+	Action     string `json:"action"`
+	PointId    int    `json:"pointId"`
+	PointField string `json:"pointField"`
+	Topic      string `json:"topic"`
+	Payload    string `json:"payload"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // 数据点
 // ─────────────────────────────────────────────────────────────

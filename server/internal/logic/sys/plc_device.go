@@ -131,25 +131,25 @@ func (s *sPlcDevice) Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (
 }
 
 // Control 通过 MQTT 向设备发送一键启动/停止命令。
-func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (err error) {
+func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (res *sysin.PlcDeviceControlModel, err error) {
 	g.Log().Infof(ctx, "plc device control requested: deviceId=%d action=%s", in.DeviceId, in.Action)
 
 	dev, err := s.GetById(ctx, in.DeviceId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if strings.TrimSpace(dev.Host) == "" {
 		g.Log().Warningf(ctx, "plc device control failed: empty host, deviceId=%d", in.DeviceId)
-		return gerror.New("设备DTU编号为空，无法发送控制命令")
+		return nil, gerror.New("设备DTU编号为空，无法发送控制命令")
 	}
 
 	point, err := s.findControlPoint(ctx, in.DeviceId, in.Action)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if point == nil || strings.TrimSpace(point.Field) == "" {
 		g.Log().Warningf(ctx, "plc device control failed: control point not found, deviceId=%d action=%s", in.DeviceId, in.Action)
-		return gerror.New("未找到对应的一键启停点位")
+		return nil, gerror.New("未找到对应的一键启停点位")
 	}
 
 	payload, err := json.Marshal(g.Map{
@@ -159,12 +159,24 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 		},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	topic := "/dtu/" + strings.Trim(dev.Host, "/") + "/cmd"
 	g.Log().Infof(ctx, "plc device control publish: deviceId=%d action=%s topic=%s payload=%s", in.DeviceId, in.Action, topic, string(payload))
-	return mqttx.Publish(ctx, topic, payload, 1)
+	if err = mqttx.Publish(ctx, topic, payload, 1); err != nil {
+		return nil, err
+	}
+
+	return &sysin.PlcDeviceControlModel{
+		DeviceId:   in.DeviceId,
+		DeviceCode: dev.Host,
+		Action:     in.Action,
+		PointId:    point.Id,
+		PointField: point.Field,
+		Topic:      topic,
+		Payload:    string(payload),
+	}, nil
 }
 
 func (s *sPlcDevice) findControlPoint(ctx context.Context, deviceId int, action string) (*entity.PlcPoint, error) {

@@ -37,7 +37,7 @@ type (
 		Edit(ctx context.Context, in *sysin.PlcDeviceEditInp) (err error)
 		Delete(ctx context.Context, in *sysin.PlcDeviceDeleteInp) (err error)
 		Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (err error)
-		Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (err error)
+		Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (res *sysin.PlcDeviceControlModel, err error)
 		ActiveDevices(ctx context.Context) (list []*entity.PlcDevice, err error)
 		GetById(ctx context.Context, id int) (dev *entity.PlcDevice, err error)
 		CreateByCode(ctx context.Context, code string) (dev *entity.PlcDevice, err error)
