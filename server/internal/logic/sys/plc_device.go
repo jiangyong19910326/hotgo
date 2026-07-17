@@ -22,11 +22,6 @@ import (
 
 type sPlcDevice struct{}
 
-type plcControlPayloadItem struct {
-	Time  string  `json:"time"`
-	Value float64 `json:"value"`
-}
-
 func NewPlcDevice() *sPlcDevice { return &sPlcDevice{} }
 
 func init() {
@@ -152,12 +147,7 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 		return nil, gerror.New("未找到对应的一键启停点位")
 	}
 
-	payload, err := json.Marshal(g.Map{
-		point.Field: plcControlPayloadItem{
-			Time:  gtime.Now().Format("Y-m-d H:i:s"),
-			Value: 1,
-		},
-	})
+	payload, err := json.Marshal(g.Map{point.Field: 1})
 	if err != nil {
 		return nil, err
 	}
