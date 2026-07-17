@@ -724,6 +724,9 @@
   const currentChartRef = ref<HTMLDivElement>();
   let tempChart: echarts.ECharts | null = null;
   let currentChart: echarts.ECharts | null = null;
+  type ChartState = { legend: string[]; xAxis: string[]; series: any[] };
+  let tempChartState: ChartState = { legend: [], xAxis: [], series: [] };
+  let currentChartState: ChartState = { legend: [], xAxis: [], series: [] };
 
   const deviceImageUrl = computed(() => {
     const text =
@@ -788,6 +791,76 @@
     };
   }
 
+  function cloneChartState(res: any): ChartState {
+    return {
+      legend: [...(res?.legend || [])],
+      xAxis: [...(res?.xAxis || [])],
+      series: (res?.series || []).map((s: any) => ({ ...s, data: [...(s.data || [])] })),
+    };
+  }
+
+  function setChartFromState(chart: echarts.ECharts | null, state: ChartState, palette: string[]) {
+    chart?.setOption(lineOption(state.legend, state.xAxis, state.series, palette), true);
+  }
+
+  function chartBucketLabel(value: any) {
+    const date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+      date.getHours()
+    )}:${pad(date.getMinutes())}:00`;
+  }
+
+  function pointMatchesSeries(point: any, series: any) {
+    if (!point || !series) return false;
+    if (series.pointId && point.pointId && Number(series.pointId) === Number(point.pointId)) return true;
+    const pointField = String(point.field || '').toLowerCase();
+    const seriesField = String(series.field || '').toLowerCase();
+    if (pointField && seriesField && pointField === seriesField) return true;
+    return String(series.name || '').toLowerCase() === String(point.name || '').toLowerCase();
+  }
+
+  function appendRealtimeChartPoint(state: ChartState, realtimePoints: any[]) {
+    if (!state.series.length || !Array.isArray(realtimePoints) || realtimePoints.length === 0) return false;
+
+    let changed = false;
+    for (const point of realtimePoints) {
+      const label = chartBucketLabel(point.collectedAt);
+      if (!label) continue;
+
+      const seriesIndex = state.series.findIndex((s: any) => pointMatchesSeries(point, s));
+      if (seriesIndex < 0) continue;
+
+      let xIndex = state.xAxis.indexOf(label);
+      if (xIndex < 0) {
+        state.xAxis.push(label);
+        xIndex = state.xAxis.length - 1;
+        state.series.forEach((s: any) => s.data.push(null));
+      }
+
+      state.series[seriesIndex].data[xIndex] = Number(point.engValue ?? 0);
+      if (state.xAxis.length > 1000) {
+        state.xAxis.shift();
+        state.series.forEach((s: any) => s.data.shift());
+      }
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  function updateChartsByRealtime(realtimePoints: any[]) {
+    const tempChanged = appendRealtimeChartPoint(tempChartState, realtimePoints);
+    const currentChanged = appendRealtimeChartPoint(currentChartState, realtimePoints);
+    if (tempChanged) {
+      setChartFromState(tempChart, tempChartState, ['#1890ff', '#f5a623', '#ff4d4f']);
+    }
+    if (currentChanged) {
+      setChartFromState(currentChart, currentChartState, ['#1890ff', '#52c41a']);
+    }
+  }
+
   async function loadCharts(devId: number) {
     try {
       const tempRes: any = await http.request({
@@ -795,14 +868,8 @@
         method: 'GET',
         params: { deviceId: devId },
       });
-      tempChart?.setOption(
-        lineOption(tempRes?.legend || [], tempRes?.xAxis || [], tempRes?.series || [], [
-          '#1890ff',
-          '#f5a623',
-          '#ff4d4f',
-        ]),
-        true
-      );
+      tempChartState = cloneChartState(tempRes);
+      setChartFromState(tempChart, tempChartState, ['#1890ff', '#f5a623', '#ff4d4f']);
     } catch {}
     try {
       const curRes: any = await http.request({
@@ -810,13 +877,8 @@
         method: 'GET',
         params: { deviceId: devId },
       });
-      currentChart?.setOption(
-        lineOption(curRes?.legend || [], curRes?.xAxis || [], curRes?.series || [], [
-          '#1890ff',
-          '#52c41a',
-        ]),
-        true
-      );
+      currentChartState = cloneChartState(curRes);
+      setChartFromState(currentChart, currentChartState, ['#1890ff', '#52c41a']);
     } catch {}
   }
 
@@ -869,6 +931,8 @@
     deviceId.value = id;
     points.value = [];
     allAlarms.value = [];
+    tempChartState = { legend: [], xAxis: [], series: [] };
+    currentChartState = { legend: [], xAxis: [], series: [] };
     device.value = null;
     if (!id) return;
     await loadOverview(true);
@@ -902,7 +966,9 @@
   function onPlcRealtimeMessage(message: WebSocketMessage) {
     const data = message?.data || {};
     if (!deviceId.value || Number(data.deviceId) !== Number(deviceId.value)) return;
-    mergeRealtimePoints(data.points || []);
+    const realtimePoints = data.points || [];
+    mergeRealtimePoints(realtimePoints);
+    updateChartsByRealtime(realtimePoints);
     refreshGauges();
   }
 
