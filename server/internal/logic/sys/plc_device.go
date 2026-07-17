@@ -164,7 +164,7 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 
 	topic := "/dtu/" + strings.Trim(dev.Host, "/") + "/cmd"
 	g.Log().Infof(ctx, "plc device control publish: deviceId=%d action=%s topic=%s payload=%s", in.DeviceId, in.Action, topic, string(payload))
-	if err = mqttx.Publish(ctx, topic, payload, 1); err != nil {
+	if err = mqttx.Publish(ctx, topic, payload, 0); err != nil {
 		return nil, err
 	}
 
