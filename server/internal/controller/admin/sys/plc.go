@@ -113,6 +113,11 @@ func (c *cPlc) DeviceStatus(ctx context.Context, req *plc.DeviceStatusReq) (res 
 	return
 }
 
+func (c *cPlc) DeviceControl(ctx context.Context, req *plc.DeviceControlReq) (res *plc.DeviceControlRes, err error) {
+	err = service.PlcDevice().Control(ctx, &req.PlcDeviceControlInp)
+	return
+}
+
 // ─────────────────────────────────────────────────────────────
 // 数据点
 // ─────────────────────────────────────────────────────────────

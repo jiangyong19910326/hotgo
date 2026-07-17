@@ -36,6 +36,9 @@ export function DeviceDelete(params: any) {
 export function DeviceStatus(params: any) {
   return http.request({ url: '/plc/device/status', method: 'POST', params });
 }
+export function DeviceControl(params: any) {
+  return http.request({ url: '/plc/device/control', method: 'POST', params });
+}
 
 // ─── 数据点 ───────────────────────────────────────────────────
 export function PointList(params?: any) {

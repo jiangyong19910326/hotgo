@@ -115,6 +115,11 @@ type PlcDeviceStatusInp struct {
 	Status int `json:"status" v:"required#状态不能为空"`
 }
 
+type PlcDeviceControlInp struct {
+	DeviceId int    `json:"deviceId" v:"required#设备ID不能为空" dc:"设备ID"`
+	Action   string `json:"action"   v:"required|in:start,stop#控制动作不能为空|控制动作仅支持start/stop" dc:"控制动作 start/stop"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // 数据点
 // ─────────────────────────────────────────────────────────────

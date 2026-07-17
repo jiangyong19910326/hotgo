@@ -3,10 +3,13 @@ package sys
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"hotgo/internal/dao"
 	"hotgo/internal/library/contexts"
 	"hotgo/internal/library/hgorm/handler"
+	"hotgo/internal/library/mqttx"
 	"hotgo/internal/model/entity"
 	"hotgo/internal/model/input/sysin"
 	"hotgo/internal/service"
@@ -18,6 +21,11 @@ import (
 )
 
 type sPlcDevice struct{}
+
+type plcControlPayloadItem struct {
+	Time  string  `json:"time"`
+	Value float64 `json:"value"`
+}
 
 func NewPlcDevice() *sPlcDevice { return &sPlcDevice{} }
 
@@ -51,7 +59,7 @@ func (s *sPlcDevice) List(ctx context.Context, in *sysin.PlcDeviceListInp) (list
 	}
 	err = mod.Fields(dao.PlcDevice.Table()+".*", "m.name as mine_name").
 		Page(in.Page, in.PerPage).
-		OrderDesc(dao.PlcDevice.Table()+"."+d.Id).
+		OrderDesc(dao.PlcDevice.Table() + "." + d.Id).
 		Scan(&list)
 	return
 }
@@ -120,6 +128,61 @@ func (s *sPlcDevice) Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (
 	_, err = s.Model(ctx).Where(dao.PlcDevice.Columns().Id, in.Id).
 		Data(g.Map{dao.PlcDevice.Columns().Status: in.Status}).Update()
 	return
+}
+
+// Control 通过 MQTT 向设备发送一键启动/停止命令。
+func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (err error) {
+	dev, err := s.GetById(ctx, in.DeviceId)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(dev.Host) == "" {
+		return gerror.New("设备DTU编号为空，无法发送控制命令")
+	}
+
+	point, err := s.findControlPoint(ctx, in.DeviceId, in.Action)
+	if err != nil {
+		return err
+	}
+	if point == nil || strings.TrimSpace(point.Field) == "" {
+		return gerror.New("未找到对应的一键启停点位")
+	}
+
+	payload, err := json.Marshal(g.Map{
+		point.Field: plcControlPayloadItem{
+			Time:  gtime.Now().Format("Y-m-d H:i:s"),
+			Value: 1,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	topic := "/dtu/" + strings.Trim(dev.Host, "/") + "/cmd"
+	return mqttx.Publish(ctx, topic, payload, 1)
+}
+
+func (s *sPlcDevice) findControlPoint(ctx context.Context, deviceId int, action string) (*entity.PlcPoint, error) {
+	points, err := service.PlcPoint().ActivePoints(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates := []string{"一键启动", "启动", "start"}
+	if strings.EqualFold(action, "stop") {
+		candidates = []string{"一键停止", "停止", "stop"}
+	}
+
+	for _, point := range points {
+		text := strings.ToLower(point.Field + " " + point.Name + " " + point.Remark)
+		for _, keyword := range candidates {
+			if strings.Contains(text, strings.ToLower(keyword)) {
+				return point, nil
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 // ActiveDevices 获取所有启用中的设备列表（供 MQTT 订阅器使用）

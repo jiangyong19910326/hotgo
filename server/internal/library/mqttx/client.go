@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -121,6 +122,27 @@ func Stop() {
 	if client != nil && client.IsConnected() {
 		client.Disconnect(500)
 	}
+}
+
+// Publish 向 MQTT broker 发布消息，供设备控制命令复用当前连接。
+func Publish(ctx context.Context, topic string, payload []byte, qos byte) error {
+	clientMu.Lock()
+	c := client
+	clientMu.Unlock()
+
+	if c == nil || !c.IsConnected() {
+		return gerror.New("mqtt client not connected")
+	}
+
+	token := c.Publish(topic, qos, false, payload)
+	if !token.WaitTimeout(5 * time.Second) {
+		return gerror.New("mqtt publish timeout")
+	}
+	if token.Error() != nil {
+		return token.Error()
+	}
+	g.Log().Infof(ctx, "mqttx published: topic=%s len=%d", topic, len(payload))
+	return nil
 }
 
 func loadConfig(ctx context.Context) (*config, error) {

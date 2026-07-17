@@ -93,6 +93,12 @@ type DeviceStatusReq struct {
 }
 type DeviceStatusRes struct{}
 
+type DeviceControlReq struct {
+	g.Meta `path:"/plc/device/control" method:"post" tags:"PLC设备" summary:"发送PLC设备启停命令"`
+	sysin.PlcDeviceControlInp
+}
+type DeviceControlRes struct{}
+
 // ─────────────────────────────────────────────────────────────
 // 数据点
 // ─────────────────────────────────────────────────────────────

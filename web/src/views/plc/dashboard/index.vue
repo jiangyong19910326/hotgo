@@ -27,6 +27,12 @@
           style="width: 200px"
           @update:value="onDeviceChange"
         />
+        <n-button size="small" type="success" :loading="controlling" @click="sendDeviceControl('start')">
+          一键启动
+        </n-button>
+        <n-button size="small" type="error" :loading="controlling" @click="sendDeviceControl('stop')">
+          一键停止
+        </n-button>
         <span class="clock">{{ clock }}</span>
         <n-button class="fullscreen-btn" size="small" ghost @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
@@ -166,8 +172,9 @@
 
 <script lang="ts" setup>
   import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+  import { useMessage } from 'naive-ui';
   import * as echarts from 'echarts';
-  import { MineOptions, DeviceList, Overview } from '@/api/plc';
+  import { MineOptions, DeviceList, DeviceControl, Overview } from '@/api/plc';
   import { http } from '@/utils/http/axios';
   import { SocketEnum } from '@/enums/socketEnum';
   import { addOnMessage, removeOnMessage, WebSocketMessage } from '@/utils/websocket';
@@ -184,7 +191,9 @@
   const points = ref<any[]>([]);
   const allAlarms = ref<any[]>([]);
   const loading = ref(false);
+  const controlling = ref(false);
   const clock = ref('');
+  const message = useMessage();
   const screenRef = ref<HTMLElement>();
   const isFullscreen = ref(false);
   let clockTimer: any = null;
@@ -960,6 +969,25 @@
       refreshGauges();
     } finally {
       loading.value = false;
+    }
+  }
+
+  async function sendDeviceControl(action: 'start' | 'stop') {
+    if (!deviceId.value) {
+      message.warning('请先选择设备');
+      return;
+    }
+    const actionText = action === 'start' ? '启动' : '停止';
+    if (!window.confirm(`确认要${actionText}当前设备吗？`)) return;
+
+    try {
+      controlling.value = true;
+      await DeviceControl({ deviceId: deviceId.value, action });
+      message.success(`${actionText}命令已发送`);
+    } catch (e: any) {
+      message.error(e?.message || `${actionText}命令发送失败`);
+    } finally {
+      controlling.value = false;
     }
   }
 
