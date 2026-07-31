@@ -144,10 +144,10 @@ func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp)
 	}
 	if point == nil || strings.TrimSpace(point.Field) == "" {
 		g.Log().Warningf(ctx, "plc device control failed: control point not found, deviceId=%d action=%s", in.DeviceId, in.Action)
-		return nil, gerror.New("未找到对应的一键启停点位")
+		return nil, gerror.New("未找到对应的控制点位")
 	}
 
-	payload, err := json.Marshal(g.Map{point.Field: 1})
+	payload, err := json.Marshal(g.Map{point.Field: s.controlValue(in.Action)})
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +178,11 @@ func (s *sPlcDevice) findControlPoint(ctx context.Context, deviceId int, action 
 	}
 
 	candidates := []string{"一键启动", "启动", "start"}
-	if strings.EqualFold(action, "stop") {
+	switch strings.ToLower(action) {
+	case "stop":
 		candidates = []string{"一键停止", "停止", "stop"}
+	case "lock", "unlock":
+		candidates = []string{"锁机", "v2.0", "lock"}
 	}
 
 	for _, point := range points {
@@ -192,6 +195,13 @@ func (s *sPlcDevice) findControlPoint(ctx context.Context, deviceId int, action 
 	}
 
 	return nil, nil
+}
+
+func (s *sPlcDevice) controlValue(action string) int {
+	if strings.EqualFold(action, "unlock") {
+		return 0
+	}
+	return 1
 }
 
 // ActiveDevices 获取所有启用中的设备列表（供 MQTT 订阅器使用）

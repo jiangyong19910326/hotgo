@@ -117,7 +117,7 @@ type PlcDeviceStatusInp struct {
 
 type PlcDeviceControlInp struct {
 	DeviceId int    `json:"deviceId" v:"required#设备ID不能为空" dc:"设备ID"`
-	Action   string `json:"action"   v:"required|in:start,stop#控制动作不能为空|控制动作仅支持start/stop" dc:"控制动作 start/stop"`
+	Action   string `json:"action"   v:"required|in:start,stop,lock,unlock#控制动作不能为空|控制动作仅支持start/stop/lock/unlock" dc:"控制动作 start/stop/lock/unlock"`
 }
 
 type PlcDeviceControlModel struct {

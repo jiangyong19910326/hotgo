@@ -33,6 +33,12 @@
         <n-button size="small" type="error" :loading="controlling" @click="sendDeviceControl('stop')">
           一键停止
         </n-button>
+        <n-button size="small" type="warning" :loading="controlling" @click="sendDeviceControl('lock')">
+          锁机
+        </n-button>
+        <n-button size="small" tertiary :loading="controlling" @click="sendDeviceControl('unlock')">
+          解除锁机
+        </n-button>
         <span class="clock">{{ clock }}</span>
         <n-button class="fullscreen-btn" size="small" ghost @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
@@ -972,12 +978,25 @@
     }
   }
 
-  async function sendDeviceControl(action: 'start' | 'stop') {
+  type DeviceControlAction = 'start' | 'stop' | 'lock' | 'unlock';
+
+  function getControlActionText(action: DeviceControlAction) {
+    return (
+      {
+        start: '启动',
+        stop: '停止',
+        lock: '锁机',
+        unlock: '解除锁机',
+      } as Record<DeviceControlAction, string>
+    )[action];
+  }
+
+  async function sendDeviceControl(action: DeviceControlAction) {
     if (!deviceId.value) {
       message.warning('请先选择设备');
       return;
     }
-    const actionText = action === 'start' ? '启动' : '停止';
+    const actionText = getControlActionText(action);
     if (!window.confirm(`确认要${actionText}当前设备吗？`)) return;
 
     try {
