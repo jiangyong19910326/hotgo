@@ -128,6 +128,9 @@ func (s *sPlcDevice) Status(ctx context.Context, in *sysin.PlcDeviceStatusInp) (
 // Control 通过 MQTT 向设备发送一键启动/停止命令。
 func (s *sPlcDevice) Control(ctx context.Context, in *sysin.PlcDeviceControlInp) (res *sysin.PlcDeviceControlModel, err error) {
 	g.Log().Infof(ctx, "plc device control requested: deviceId=%d action=%s", in.DeviceId, in.Action)
+	if s.isLockAction(in.Action) && !service.AdminMember().VerifySuperId(ctx, contexts.GetUserId(ctx)) {
+		return nil, gerror.New("仅超级管理员可执行锁机/解除锁机")
+	}
 
 	dev, err := s.GetById(ctx, in.DeviceId)
 	if err != nil {
@@ -202,6 +205,10 @@ func (s *sPlcDevice) controlValue(action string) int {
 		return 0
 	}
 	return 1
+}
+
+func (s *sPlcDevice) isLockAction(action string) bool {
+	return strings.EqualFold(action, "lock") || strings.EqualFold(action, "unlock")
 }
 
 // ActiveDevices 获取所有启用中的设备列表（供 MQTT 订阅器使用）

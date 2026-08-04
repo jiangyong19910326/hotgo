@@ -28,6 +28,7 @@ export interface UserInfoState {
   deptName: string;
   deptType: string;
   roleName: string;
+  isSuper: boolean;
   cityLabel: string;
   permissions: string[];
   username: string;

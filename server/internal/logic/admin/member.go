@@ -701,6 +701,7 @@ func (s *sAdminMember) LoginMemberInfo(ctx context.Context) (res *adminin.LoginM
 		return
 	}
 	res.Permissions = permissions
+	res.IsSuper = s.VerifySuperId(ctx, memberId)
 
 	// 登录统计
 	stat, err := s.MemberLoginStat(ctx, &adminin.MemberLoginStatInp{MemberId: memberId})

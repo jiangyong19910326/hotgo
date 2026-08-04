@@ -33,10 +33,22 @@
         <n-button size="small" type="error" :loading="controlling" @click="sendDeviceControl('stop')">
           一键停止
         </n-button>
-        <n-button size="small" type="warning" :loading="controlling" @click="sendDeviceControl('lock')">
+        <n-button
+          v-if="isSuperAdmin"
+          size="small"
+          type="warning"
+          :loading="controlling"
+          @click="sendDeviceControl('lock')"
+        >
           锁机
         </n-button>
-        <n-button size="small" tertiary :loading="controlling" @click="sendDeviceControl('unlock')">
+        <n-button
+          v-if="isSuperAdmin"
+          size="small"
+          tertiary
+          :loading="controlling"
+          @click="sendDeviceControl('unlock')"
+        >
           解除锁机
         </n-button>
         <span class="clock">{{ clock }}</span>
@@ -184,6 +196,7 @@
   import { http } from '@/utils/http/axios';
   import { SocketEnum } from '@/enums/socketEnum';
   import { addOnMessage, removeOnMessage, WebSocketMessage } from '@/utils/websocket';
+  import { useUserStore } from '@/store/modules/user';
   import coneCrusherImg from '@/assets/images/cone-crusher.jpg';
   import sandMakerImg from '@/assets/images/sand-maker.png';
 
@@ -200,6 +213,7 @@
   const controlling = ref(false);
   const clock = ref('');
   const message = useMessage();
+  const userStore = useUserStore();
   const screenRef = ref<HTMLElement>();
   const isFullscreen = ref(false);
   let clockTimer: any = null;
@@ -219,6 +233,7 @@
   const alarms = computed(() => allAlarms.value.filter((a) => a.active));
   const activeAlarmCount = computed(() => alarms.value.length);
   const firstAlarm = computed(() => alarms.value[0]);
+  const isSuperAdmin = computed(() => !!userStore.info?.isSuper);
   const alarmCarouselIndex = ref(0);
   const statusCarouselIndex = ref(0);
 
@@ -994,6 +1009,10 @@
   async function sendDeviceControl(action: DeviceControlAction) {
     if (!deviceId.value) {
       message.warning('请先选择设备');
+      return;
+    }
+    if ((action === 'lock' || action === 'unlock') && !isSuperAdmin.value) {
+      message.error('仅超级管理员可执行锁机/解除锁机');
       return;
     }
     const actionText = getControlActionText(action);

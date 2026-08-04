@@ -90,6 +90,7 @@ type LoginMemberInfoModel struct {
 	DeptName    string      `json:"deptName"           dc:"所属部门"`
 	RoleName    string      `json:"roleName"           dc:"所属角色"`
 	Permissions []string    `json:"permissions"        dc:"角色信息"`
+	IsSuper     bool        `json:"isSuper"            dc:"是否超级管理员"`
 	DeptType    string      `json:"deptType"           dc:"部门类型"`
 	DeptId      int64       `json:"-"                  dc:"部门ID"`
 	RoleId      int64       `json:"-"                  dc:"角色ID"`
